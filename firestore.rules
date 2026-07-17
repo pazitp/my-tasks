@@ -1,0 +1,26 @@
+rules_version = '2';
+// חוקי אבטחה למסד הנתונים — עותק לתיעוד. מה שקובע הוא מה שמוגדר במסוף Firebase.
+// הוסיפי את שלושת הבלוקים של tasks/taskLists/taskMeta לחוקים הקיימים של המתכונים.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // המתכונים המשפחתיים (קיים)
+    match /recipes/{doc} {
+      allow read, write: if request.auth != null;
+    }
+    match /meta/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
+    // המשימות — רק החשבון הפרטי של פזית
+    match /tasks/{doc} {
+      allow read, write: if request.auth != null && request.auth.token.email == 'pazit@tasks.app';
+    }
+    match /taskLists/{doc} {
+      allow read, write: if request.auth != null && request.auth.token.email == 'pazit@tasks.app';
+    }
+    match /taskMeta/{doc} {
+      allow read, write: if request.auth != null && request.auth.token.email == 'pazit@tasks.app';
+    }
+  }
+}

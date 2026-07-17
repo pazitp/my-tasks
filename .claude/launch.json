@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tasks",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "http-server", "C:\\Users\\user\\my-tasks", "-p", "8318", "-c-1"],
+      "port": 8318
+    }
+  ]
+}

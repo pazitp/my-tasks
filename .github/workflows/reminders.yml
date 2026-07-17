@@ -1,0 +1,27 @@
+# שולח תזכורות למשימות + סיכום בוקר יומי, דרך Firebase Cloud Messaging.
+# רץ כל 10 דקות (בפועל GitHub לפעמים מאחר בכמה דקות — זה בסדר לתזכורות).
+name: reminders
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: reminders
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install firebase-admin@12 --no-save --no-audit --no-fund
+        working-directory: scripts
+      - run: node send-reminders.js
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

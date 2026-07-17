@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#6c5ce7">
+<title>המשימות שלי</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body class="bg-lilac">
+
+<!-- מסך כניסה -->
+<div id="login-screen" class="hidden">
+  <div class="login-box">
+    <div class="login-logo">✅</div>
+    <h1>המשימות שלי</h1>
+    <p id="login-msg">הקלידי את הסיסמה שלך:</p>
+    <form id="login-form">
+      <input type="password" id="login-password" placeholder="סיסמה" autocomplete="current-password">
+      <button type="submit" class="btn btn-primary" style="width:100%">כניסה</button>
+    </form>
+    <p id="login-error" class="login-error hidden"></p>
+    <p class="login-hint hidden" id="signup-hint">
+      פעם ראשונה כאן? <a id="signup-link">לחצי כאן כדי לקבוע סיסמה חדשה</a>
+    </p>
+  </div>
+</div>
+
+<!-- האפליקציה -->
+<div id="app" class="hidden">
+  <header id="topbar">
+    <button id="menu-btn" title="תפריט">☰</button>
+    <span class="app-title">✅ המשימות שלי</span>
+    <button id="settings-btn" title="הגדרות">⚙️</button>
+  </header>
+
+  <div id="demo-banner" class="hidden">
+    מצב הדגמה — המשימות נשמרות רק במכשיר הזה. סנכרון ותזכורות יופעלו בהמשך ההתקנה.
+  </div>
+
+  <div id="layout">
+    <nav id="sidebar"></nav>
+    <div id="overlay"></div>
+    <main id="main">
+      <div id="add-box">
+        <input id="add-input" type="text" placeholder="הוסיפי משימה... למשל: לשלם ארנונה כל חודש ב-1" autocomplete="off">
+        <button id="add-btn" class="btn btn-primary">הוספה</button>
+      </div>
+      <div id="add-preview"></div>
+      <div id="view-title"></div>
+      <div id="task-groups"></div>
+    </main>
+  </div>
+</div>
+
+<script src="firebase-config.js?v=1"></script>
+<script type="module" src="app.js?v=1"></script>
+</body>
+</html>
