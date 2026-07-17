@@ -84,7 +84,9 @@ async function main() {
   // לכל משימה יכולות להיות כמה תזכורות (remindAts). שולחים כל תזכורת שעבר זמנה
   // ושעדיין לא נשלחה (חדשה מ-notifiedAt), ומדלגים על תזכורות ישנות מ-3 ימים.
   for (const t of tasks) {
-    const remindAts = Array.isArray(t.remindAts) ? t.remindAts : (t.remindAt ? [t.remindAt] : []);
+    // רשימת מועדי התזכורת; אם היא ריקה — נופלים חזרה לשדה הישן remindAt (משימות מגרסה קודמת)
+    const remindAts = (Array.isArray(t.remindAts) && t.remindAts.length) ? t.remindAts
+      : (t.remindAt ? [t.remindAt] : []);
     const pending = remindAts.filter(ms =>
       ms <= now && ms > (t.notifiedAt || 0) && ms > now - 3 * 86400000);
     if (!pending.length) continue;
