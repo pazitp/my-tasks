@@ -636,10 +636,14 @@ async function completeTask(t) {
   }
 }
 
-// נודניק — מוסיף תזכורת חד-פעמית נוספת בלי לשנות את תאריך המשימה
+// נודניק — מזיז את התזכורת לזמן החדש בלי לשנות את תאריך המשימה.
+// מועדים שכבר נשלחו יורדים מהרשימה; תזכורות עתידיות אחרות נשארות.
 async function snoozeReminder(t, atMs, label) {
-  const remindAts = [...new Set([...(t.remindAts || []), atMs])].sort((a, b) => a - b);
-  await store.update('tasks', t.id, { remindAts });
+  const now = Date.now();
+  const existing = (Array.isArray(t.remindAts) && t.remindAts.length) ? t.remindAts
+    : (t.remindAt ? [t.remindAt] : []);
+  const remindAts = [...new Set([...existing.filter(ms => ms > now), atMs])].sort((a, b) => a - b);
+  await store.update('tasks', t.id, { remindAts, remindAt: null });
   toast(`⏰ אזכיר שוב ${label}`);
 }
 
@@ -1122,6 +1126,8 @@ function openTaskModal(t) {
   });
   // עורך התזכורות — רשימה דינמית של "מתי + באיזו שעה"
   const rems = getReminders(t).map(r => ({ daysBefore: r.daysBefore || 0, time: r.time || '09:00' }));
+  // משימה עם שעה מקבלת אוטומטית תזכורת לאותה שעה (אפשר להסיר ידנית לפני שמירה)
+  if (t.time && !rems.some(r => !r.daysBefore && r.time === t.time)) rems.push({ daysBefore: 0, time: t.time });
   function renderRems() {
     const box = $('#tm-rems');
     box.innerHTML = rems.length ? rems.map((r, i) => `
@@ -1138,6 +1144,18 @@ function openTaskModal(t) {
     box.querySelectorAll('.rem-del').forEach(el => el.onclick = () => { rems.splice(Number(el.dataset.i), 1); renderRems(); });
   }
   renderRems();
+  // שינוי שעת המשימה מזיז את התזכורת האוטומטית; מחיקת השעה מסירה אותה
+  let lastTime = t.time || '';
+  $('#tm-time').onchange = () => {
+    const newTime = $('#tm-time').value;
+    const i = rems.findIndex(r => !r.daysBefore && r.time === lastTime);
+    if (newTime) {
+      if (i >= 0) rems[i].time = newTime;
+      else if (!rems.some(r => !r.daysBefore && r.time === newTime)) rems.push({ daysBefore: 0, time: newTime });
+    } else if (i >= 0) rems.splice(i, 1);
+    lastTime = newTime;
+    renderRems();
+  };
   $('#tm-rem-add').onclick = () => {
     if (rems.length >= 5) { toast('עד 5 תזכורות למשימה'); return; }
     rems.push({ daysBefore: 0, time: $('#tm-time').value || '09:00' });
