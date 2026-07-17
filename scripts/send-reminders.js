@@ -93,6 +93,7 @@ async function main() {
       title: '⏰ ' + t.title,
       body: whenText(t, il.date) + (t.notes ? '\n' + String(t.notes).slice(0, 80) : ''),
       tag: 'task-' + t.id,
+      taskId: t.id,
       url: './'
     });
     await db.doc('tasks/' + t.id).update({ notifiedAt: now });

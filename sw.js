@@ -1,5 +1,5 @@
 // Service Worker — מאפשר לאפליקציה לעבוד גם בלי אינטרנט ולהיות מותקנת במסך הבית.
-const CACHE = 'tasks-v4';
+const CACHE = 'tasks-v5';
 const FILES = [
   './',
   './index.html',
@@ -49,13 +49,23 @@ self.addEventListener('push', e => {
     dir: 'rtl',
     lang: 'he',
     tag: d.tag || undefined,
-    data: { url: d.url || './' }
+    data: { url: d.url || './', taskId: d.taskId || null },
+    // כפתורי פעולה על תזכורת של משימה: נודניק וסימון כבוצע
+    actions: d.taskId ? [
+      { action: 'snooze60', title: '⏰ נודניק שעה' },
+      { action: 'done', title: '✔ בוצע' }
+    ] : []
   }));
 });
 
-// לחיצה על התראה — פותחת את האפליקציה
+// לחיצה על התראה — פותחת את האפליקציה; לחיצה על כפתור פעולה מעבירה לה את הפעולה
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  const d = e.notification.data || {};
+  if (e.action && d.taskId) {
+    e.waitUntil(clients.openWindow(`./?act=${e.action}&task=${d.taskId}`));
+    return;
+  }
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
       for (const c of list) { if ('focus' in c) return c.focus(); }

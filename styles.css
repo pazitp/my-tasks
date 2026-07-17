@@ -232,6 +232,15 @@ body.bg-night .chip { color: #cdc5ff; }
 .rem-row input[type="time"] { width: 106px; padding: 8px 8px; border: 2px solid var(--line); border-radius: 11px; font-size: 15px; font-family: inherit; background: var(--bg); color: var(--text); }
 .rem-row span { font-size: 14px; color: var(--muted); flex-shrink: 0; }
 .rem-del { background: none; border: none; color: var(--danger); font-size: 16px; cursor: pointer; padding: 4px 6px; }
+
+/* תפריט נודניק / דחייה */
+.snooze-list { display: flex; flex-direction: column; gap: 8px; }
+.snooze-opt {
+  text-align: right; padding: 13px 14px; border: 2px solid var(--line); border-radius: 12px;
+  background: var(--bg); color: var(--text); font-size: 16px; font-family: inherit; cursor: pointer;
+}
+.snooze-opt:hover { border-color: var(--primary); }
+.snooze-sep { border: none; border-top: 1px solid var(--line); margin: 4px 0; }
 .inline-check { display: flex; align-items: center; gap: 8px; font-size: 15px; cursor: pointer; }
 .inline-check input { width: 19px; height: 19px; accent-color: var(--primary); }
 

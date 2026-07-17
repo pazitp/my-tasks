@@ -636,6 +636,45 @@ async function completeTask(t) {
   }
 }
 
+// נודניק — מוסיף תזכורת חד-פעמית נוספת בלי לשנות את תאריך המשימה
+async function snoozeReminder(t, atMs, label) {
+  const remindAts = [...new Set([...(t.remindAts || []), atMs])].sort((a, b) => a - b);
+  await store.update('tasks', t.id, { remindAts });
+  toast(`⏰ אזכיר שוב ${label}`);
+}
+
+function openSnoozeMenu(t) {
+  const now = new Date();
+  const opts = [];
+  opts.push(['h1', '⏰ תזכורת שוב בעוד שעה']);
+  if (now.getHours() < 18) opts.push(['eve', '🌆 תזכורת הערב ב-19:00']);
+  opts.push(['tmr', '☀️ תזכורת מחר ב-09:00']);
+  opts.push(['sep', '']);
+  opts.push(['d1', '📅 דחיית המשימה למחר']);
+  opts.push(['d7', '📅 דחיית המשימה בשבוע']);
+  modalShell(`
+    <h2>דחייה — ${esc(t.title)}</h2>
+    <div class="snooze-list">
+      ${opts.map(([a, l]) => a === 'sep' ? '<hr class="snooze-sep">' :
+        `<button type="button" class="snooze-opt" data-a="${a}">${l}</button>`).join('')}
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" id="sz-cancel">ביטול</button></div>`);
+  $('#sz-cancel').onclick = closeModal;
+  document.querySelectorAll('.snooze-opt').forEach(b => b.onclick = async () => {
+    closeModal();
+    const a = b.dataset.a;
+    if (a === 'h1') await snoozeReminder(t, Date.now() + 3600000, 'בעוד שעה');
+    else if (a === 'eve') {
+      const d = new Date(); d.setHours(19, 0, 0, 0);
+      await snoozeReminder(t, d.getTime(), 'הערב ב-19:00');
+    } else if (a === 'tmr') {
+      const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
+      await snoozeReminder(t, d.getTime(), 'מחר ב-09:00');
+    } else if (a === 'd1') await postponeTask(t, 1);
+    else if (a === 'd7') await postponeTask(t, 7);
+  });
+}
+
 async function postponeTask(t, days) {
   const base = (t.due && t.due > todayStr()) ? t.due : todayStr();
   const due = addDaysStr(base, days);
@@ -740,7 +779,7 @@ function taskRow(t, showList = true) {
       <div class="task-title">${esc(t.title)}</div>
       ${meta.length ? `<div class="task-meta">${meta.join('')}</div>` : ''}
     </div>
-    ${!t.done && t.due ? `<div class="task-actions"><button class="snooze-btn" title="דחייה במקש אחד">+יום</button></div>` : ''}`;
+    ${!t.done && t.due ? `<div class="task-actions"><button class="snooze-btn" title="נודניק / דחייה">דחייה ⏰</button></div>` : ''}`;
 
   div.querySelector('.task-check').onclick = async e => {
     e.stopPropagation();
@@ -748,7 +787,7 @@ function taskRow(t, showList = true) {
     else await completeTask(t);
   };
   const sn = div.querySelector('.snooze-btn');
-  if (sn) sn.onclick = e => { e.stopPropagation(); postponeTask(t, 1); };
+  if (sn) sn.onclick = e => { e.stopPropagation(); openSnoozeMenu(t); };
   div.onclick = () => openTaskModal(t);
   return div;
 }
@@ -1243,6 +1282,21 @@ function wireShell() {
   $('#add-btn').onclick = submitAdd;
 }
 
+// פעולה שהגיעה מלחיצה על כפתור בהתראה (נודניק / בוצע) — דרך כתובת עם פרמטרים
+function handleNotificationAction() {
+  const p = new URLSearchParams(location.search);
+  const act = p.get('act'), id = p.get('task');
+  if (!act || !id) return;
+  history.replaceState(null, '', location.pathname);
+  let attempts = 30;
+  (function tryRun() {
+    const t = state.tasks.find(x => x.id === id);
+    if (!t) { if (attempts-- > 0) setTimeout(tryRun, 400); return; }
+    if (act === 'snooze60') snoozeReminder(t, Date.now() + 3600000, 'בעוד שעה');
+    else if (act === 'done' && !t.done) completeTask(t);
+  })();
+}
+
 function showApp(demo) {
   state.demo = demo;
   $('#login-screen').classList.add('hidden');
@@ -1250,6 +1304,7 @@ function showApp(demo) {
   $('#demo-banner').classList.toggle('hidden', !demo);
   wireShell();
   store.init();
+  handleNotificationAction();
 }
 
 function startLocal() {
