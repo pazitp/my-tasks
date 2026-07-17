@@ -1173,6 +1173,9 @@ function openTaskModal(t) {
     let due = $('#tm-due').value || null;
     const time = $('#tm-time').value || null;
     if (repeat && !due) due = firstDueForRepeat(repeat);
+    // רשת ביטחון: בחלק מדפדפני המובייל אירוע שינוי השעה לא נורה לפני השמירה,
+    // ולכן אוכפים גם כאן את הכלל — משימה עם שעה תמיד מקבלת תזכורת לאותה שעה
+    if (time && !rems.some(r => !r.daysBefore && r.time === time)) rems.push({ daysBefore: 0, time });
     if (rems.length && !due) { toast('לתזכורות צריך לבחור תאריך למשימה'); return; }
     const patch = {
       title, notes: $('#tm-notes').value.trim(),
@@ -1284,6 +1287,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
+      <p class="settings-note">גרסת אפליקציה: 9</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
