@@ -1287,7 +1287,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 9</p>
+      <p class="settings-note">גרסת אפליקציה: 10</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
@@ -1462,24 +1462,33 @@ function startLocalReminderWatch() {
 // פעולה שהגיעה מלחיצה על כפתור בהתראה (נודניק / בוצע) — דרך כתובת עם פרמטרים
 function handleNotificationAction() {
   const p = new URLSearchParams(location.search);
-  const act = p.get('act'), id = p.get('task');
+  const act = p.get('act'), id = p.get('task'), ts = Number(p.get('ts') || 0);
   if (!act || !id) return;
   history.replaceState(null, '', location.pathname);
+  // פעולה ישנה — חלון שחזר מהרקע או כתובת ששוחזרה על ידי המערכת. מתעלמים,
+  // כדי שדיאלוג "לסמן כבוצע?" ישן לא יקפוץ באיחור אחרי לחיצה על נודניק.
+  const MAX_AGE = 3 * 60000;
+  if (ts && Date.now() - ts > MAX_AGE) return;
+  const started = Date.now();
   let attempts = 30;
   (function tryRun() {
+    if (Date.now() - started > MAX_AGE) return; // הדף היה מושהה ברקע — לא מפעילים באיחור
     const t = state.tasks.find(x => x.id === id);
     if (!t) { if (attempts-- > 0) setTimeout(tryRun, 400); return; }
     if (act === 'snooze60') snoozeReminder(t, Date.now() + 3600000, 'בעוד שעה');
     else if (act === 'done' && !t.done) {
-      // אישור לפני סימון — כדי שלחיצה לא מכוונת על ההתראה לא תסגור משימה בטעות
+      // אישור לפני סימון — כדי שלחיצה לא מכוונת על ההתראה לא תסגור משימה בטעות.
+      // יש גם אפשרות נודניק, למקרה שהדיאלוג קפץ כשבעצם רצו לדחות.
       modalShell(`
         <h2>לסמן כבוצע? ✔</h2>
         <p style="margin-bottom:16px;font-size:16px">${esc(t.title)}</p>
         <div class="modal-actions">
           <button class="btn btn-primary" id="cf-yes">כן, בוצע</button>
-          <button class="btn btn-ghost" id="cf-no">לא</button>
+          <button class="btn btn-ghost" id="cf-snz">⏰ לא — הזכירי בעוד שעה</button>
+          <button class="btn btn-ghost" id="cf-no">סגירה</button>
         </div>`);
       $('#cf-yes').onclick = async () => { closeModal(); await completeTask(t); };
+      $('#cf-snz').onclick = async () => { closeModal(); await snoozeReminder(t, Date.now() + 3600000, 'בעוד שעה'); };
       $('#cf-no').onclick = closeModal;
     }
   })();
