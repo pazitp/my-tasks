@@ -1201,7 +1201,10 @@ async function enableNotifications() {
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') { toast('ההרשאה לא אושרה — אפשר לאשר בהגדרות הדפדפן'); return; }
     const msgMod = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js');
-    const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+    // חשוב: משתמשים באותו Service Worker של האפליקציה (sw.js), שמטפל גם בהתראות.
+    // רישום של שני עובדים שונים באותה כתובת גורם להם לדרוס זה את זה.
+    const reg = await navigator.serviceWorker.register('sw.js');
+    await navigator.serviceWorker.ready;
     const messaging = msgMod.getMessaging(firebaseCtx.app);
     const token = await msgMod.getToken(messaging, { vapidKey: window.VAPID_KEY, serviceWorkerRegistration: reg });
     if (!token) { toast('לא הצלחתי לקבל אישור מהדפדפן, נסי שוב'); return; }
@@ -1210,11 +1213,6 @@ async function enableNotifications() {
     await store.saveDeviceToken(deviceId, token);
     localStorage.setItem('fcmSaved', '1');
     toast('🔔 מעולה! ההתראות פעילות במכשיר הזה');
-    // הודעות שמגיעות כשהאפליקציה פתוחה
-    msgMod.onMessage(messaging, payload => {
-      const d = payload.data || {};
-      if (d.title) toast(`${d.title}${d.body ? ' — ' + d.body : ''}`);
-    });
     closeModal();
   } catch (e) {
     console.error(e);

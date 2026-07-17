@@ -1,5 +1,5 @@
 // Service Worker — מאפשר לאפליקציה לעבוד גם בלי אינטרנט ולהיות מותקנת במסך הבית.
-const CACHE = 'tasks-v3';
+const CACHE = 'tasks-v4';
 const FILES = [
   './',
   './index.html',
@@ -32,5 +32,34 @@ self.addEventListener('fetch', e => {
       caches.open(CACHE).then(c => c.put(e.request, copy));
       return res;
     }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
+  );
+});
+
+// ===== התראות דחיפה =====
+// השרת שולח הודעות "נתונים" דרך Firebase Cloud Messaging, וכאן מציגים אותן —
+// גם כשהאפליקציה סגורה וגם כשהיא פתוחה.
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = (e.data && e.data.json().data) || {}; } catch (err) { /* הודעה לא מוכרת */ }
+  if (!d.title) return;
+  e.waitUntil(self.registration.showNotification(d.title, {
+    body: d.body || '',
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    dir: 'rtl',
+    lang: 'he',
+    tag: d.tag || undefined,
+    data: { url: d.url || './' }
+  }));
+});
+
+// לחיצה על התראה — פותחת את האפליקציה
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const c of list) { if ('focus' in c) return c.focus(); }
+      return clients.openWindow('./');
+    })
   );
 });
