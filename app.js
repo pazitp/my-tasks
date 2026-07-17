@@ -649,9 +649,11 @@ function openSnoozeMenu(t) {
   opts.push(['h1', '⏰ תזכורת שוב בעוד שעה']);
   if (now.getHours() < 18) opts.push(['eve', '🌆 תזכורת הערב ב-19:00']);
   opts.push(['tmr', '☀️ תזכורת מחר ב-09:00']);
+  opts.push(['custom', '⏰ תזכורת בזמן שאבחר...']);
   opts.push(['sep', '']);
   opts.push(['d1', '📅 דחיית המשימה למחר']);
   opts.push(['d7', '📅 דחיית המשימה בשבוע']);
+  opts.push(['dcustom', '📅 דחיית המשימה לתאריך שאבחר...']);
   modalShell(`
     <h2>דחייה — ${esc(t.title)}</h2>
     <div class="snooze-list">
@@ -661,8 +663,10 @@ function openSnoozeMenu(t) {
     <div class="modal-actions"><button class="btn btn-ghost" id="sz-cancel">ביטול</button></div>`);
   $('#sz-cancel').onclick = closeModal;
   document.querySelectorAll('.snooze-opt').forEach(b => b.onclick = async () => {
-    closeModal();
     const a = b.dataset.a;
+    if (a === 'custom') { openCustomSnooze(t); return; }
+    if (a === 'dcustom') { openCustomPostpone(t); return; }
+    closeModal();
     if (a === 'h1') await snoozeReminder(t, Date.now() + 3600000, 'בעוד שעה');
     else if (a === 'eve') {
       const d = new Date(); d.setHours(19, 0, 0, 0);
@@ -675,9 +679,50 @@ function openSnoozeMenu(t) {
   });
 }
 
-async function postponeTask(t, days) {
-  const base = (t.due && t.due > todayStr()) ? t.due : todayStr();
-  const due = addDaysStr(base, days);
+// תזכורת בתאריך ושעה חופשיים
+function openCustomSnooze(t) {
+  const now = new Date();
+  const defTime = `${pad((now.getHours() + 1) % 24)}:00`;
+  modalShell(`
+    <h2>⏰ תזכורת בזמן שאבחר</h2>
+    <div class="field-row">
+      <div class="field"><label>תאריך</label><input type="date" id="cs-date" value="${todayStr()}"></div>
+      <div class="field"><label>שעה</label><input type="time" id="cs-time" value="${defTime}"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="cs-ok">קביעת תזכורת</button>
+      <button class="btn btn-ghost" id="cs-cancel">ביטול</button>
+    </div>`);
+  $('#cs-cancel').onclick = closeModal;
+  $('#cs-ok').onclick = async () => {
+    const date = $('#cs-date').value, time = $('#cs-time').value;
+    if (!date || !time) return;
+    const ms = computeRemindAt(date, time);
+    if (ms <= Date.now()) { toast('הזמן שנבחר כבר עבר — בחרי זמן עתידי'); return; }
+    closeModal();
+    await snoozeReminder(t, ms, `ב${fmtDueLabel(date)} בשעה ${time}`);
+  };
+}
+
+// דחיית המשימה לתאריך חופשי
+function openCustomPostpone(t) {
+  modalShell(`
+    <h2>📅 דחיית המשימה לתאריך</h2>
+    <div class="field"><label>לאיזה תאריך?</label><input type="date" id="cp-date" value="${addDaysStr(todayStr(), 1)}"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="cp-ok">דחייה</button>
+      <button class="btn btn-ghost" id="cp-cancel">ביטול</button>
+    </div>`);
+  $('#cp-cancel').onclick = closeModal;
+  $('#cp-ok').onclick = async () => {
+    const date = $('#cp-date').value;
+    if (!date) return;
+    closeModal();
+    await postponeTaskTo(t, date);
+  };
+}
+
+async function postponeTaskTo(t, due) {
   const rems = getReminders(t);
   await store.update('tasks', t.id, {
     due,
@@ -687,6 +732,11 @@ async function postponeTask(t, days) {
     notifiedAt: null
   });
   toast(`נדחה ל${fmtDueLabel(due)}`);
+}
+
+async function postponeTask(t, days) {
+  const base = (t.due && t.due > todayStr()) ? t.due : todayStr();
+  await postponeTaskTo(t, addDaysStr(base, days));
 }
 
 // ===== 5. ממשק המשתמש =====
@@ -1297,6 +1347,7 @@ function startLocalReminderWatch() {
         : (t.remindAt ? [t.remindAt] : []);
       for (const ms of ats) {
         if (ms > now || ms < now - 10 * 60000) continue; // רק תזכורות מ-10 הדקות האחרונות
+        if (t.notifiedAt && t.notifiedAt >= ms) continue; // השרת כבר שלח — לא מכפילים
         const key = t.id + ':' + ms;
         if (shown.has(key)) continue;
         shown.add(key);
@@ -1327,7 +1378,18 @@ function handleNotificationAction() {
     const t = state.tasks.find(x => x.id === id);
     if (!t) { if (attempts-- > 0) setTimeout(tryRun, 400); return; }
     if (act === 'snooze60') snoozeReminder(t, Date.now() + 3600000, 'בעוד שעה');
-    else if (act === 'done' && !t.done) completeTask(t);
+    else if (act === 'done' && !t.done) {
+      // אישור לפני סימון — כדי שלחיצה לא מכוונת על ההתראה לא תסגור משימה בטעות
+      modalShell(`
+        <h2>לסמן כבוצע? ✔</h2>
+        <p style="margin-bottom:16px;font-size:16px">${esc(t.title)}</p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="cf-yes">כן, בוצע</button>
+          <button class="btn btn-ghost" id="cf-no">לא</button>
+        </div>`);
+      $('#cf-yes').onclick = async () => { closeModal(); await completeTask(t); };
+      $('#cf-no').onclick = closeModal;
+    }
   })();
 }
 
