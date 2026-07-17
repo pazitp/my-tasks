@@ -14,4 +14,4 @@ window.FIREBASE_CONFIG = {
 window.TASKS_EMAIL = "pazit@tasks.app";
 
 // מפתח להתראות דחיפה (Web Push) — מתמלא בשלב ההתקנה מתוך מסוף Firebase.
-window.VAPID_KEY = "";
+window.VAPID_KEY = "BFbn7sUjD_6BlzGQPE4VK-DSdOdE87NHFMJg1IvYTJdsmq2Dg4GXv330OGpRLMfaG4mv0uH8Wc93h951dIzuKGM";
