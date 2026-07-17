@@ -2,8 +2,8 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --primary: #6c5ce7;
-  --primary-dark: #5a4bd1;
+  --primary: #3f3d47;
+  --primary-dark: #2b2933;
   --bg: #f4f2fb;
   --card: #ffffff;
   --text: #2d2a3e;
@@ -34,7 +34,9 @@ body.bg-mint   { background: linear-gradient(160deg, #eefaf3 0%, #d8f2e4 100%); 
 body.bg-peach  { background: linear-gradient(160deg, #fdf3ec 0%, #fbe3d4 100%); }
 body.bg-rose   { background: linear-gradient(160deg, #fdf0f4 0%, #f9dde8 100%); }
 body.bg-night  { background: linear-gradient(160deg, #2d2a3e 0%, #413a5c 100%); }
-body.bg-night { --bg: #353050; --card: #454060; --text: #f0eefa; --muted: #b5b0cc; --line: #565170; --shadow: 0 2px 10px rgba(0,0,0,0.25); }
+body.bg-night { --bg: #353050; --card: #454060; --text: #f0eefa; --muted: #b5b0cc; --line: #565170; --shadow: 0 2px 10px rgba(0,0,0,0.25); --primary: #6e6a80; --primary-dark: #59556b; }
+/* רקע מתמונה אישית — התמונה עצמה מוגדרת מהקוד */
+body.bg-photo { background-size: cover; background-position: center; }
 body { background-attachment: fixed; }
 
 .hidden { display: none !important; }
@@ -81,7 +83,7 @@ body { background-attachment: fixed; }
 }
 #menu-btn { font-size: 22px; background: none; border: none; cursor: pointer; padding: 6px 10px; color: var(--text); }
 #topbar .app-title { font-size: 19px; font-weight: 600; color: var(--primary-dark); flex: 1; }
-body.bg-night #topbar .app-title { color: #cdc5ff; }
+body.bg-night #topbar .app-title { color: #d5d3de; }
 #settings-btn { font-size: 20px; background: none; border: none; cursor: pointer; padding: 6px 10px; }
 
 #layout { display: flex; max-width: 1100px; margin: 0 auto; }
@@ -129,7 +131,7 @@ body.bg-night #topbar .app-title { color: #cdc5ff; }
   background: var(--card); border: 1.5px solid var(--primary); color: var(--primary-dark);
   border-radius: 999px; padding: 4px 12px; font-size: 13.5px; display: inline-flex; align-items: center; gap: 5px;
 }
-body.bg-night .chip { color: #cdc5ff; }
+body.bg-night .chip { color: #d5d3de; }
 .chip.chip-help { border-color: var(--line); color: var(--muted); }
 
 #view-title { font-size: 21px; font-weight: 600; margin: 16px 4px 10px; display: flex; align-items: center; gap: 8px; }
@@ -271,7 +273,7 @@ body.bg-night .chip { color: #cdc5ff; }
   display: flex; gap: 14px; align-items: center; max-width: 92vw;
 }
 body.bg-night #toast { background: #f0eefa; color: #2d2a3e; }
-#toast button { background: none; border: none; color: #b3a6ff; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
+#toast button { background: none; border: none; color: #c9c7d4; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
 body.bg-night #toast button { color: var(--primary-dark); }
 
 #demo-banner {

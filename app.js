@@ -546,7 +546,7 @@ class FirebaseStore {
     }
     fns.onSnapshot(fns.doc(db, 'taskMeta', 'settings'), snap => {
       state.settings = snap.exists() ? snap.data() : {};
-      applyBackground(state.settings.background);
+      applyBackground(state.settings.background, state.settings.bgImage);
       render();
     }, () => {});
   }
@@ -753,12 +753,46 @@ function toast(msg, actionLabel, actionFn) {
   setTimeout(() => { if (el.isConnected) el.remove(); }, 6000);
 }
 
-function applyBackground(bg) {
-  const valid = ['bg-lilac', 'bg-sky', 'bg-mint', 'bg-peach', 'bg-rose', 'bg-night'];
-  const cls = valid.includes(bg) ? bg : 'bg-lilac';
+function applyBackground(bg, image) {
+  const valid = ['bg-lilac', 'bg-sky', 'bg-mint', 'bg-peach', 'bg-rose', 'bg-night', 'bg-photo'];
+  let cls = valid.includes(bg) ? bg : 'bg-lilac';
+  const img = image || localStorage.getItem('tasksBgImage');
+  if (cls === 'bg-photo' && !img) cls = 'bg-lilac';
   document.body.classList.remove(...valid);
-  document.body.classList.add(cls);
+  if (cls === 'bg-photo') {
+    // שכבה בהירה קלה מעל התמונה כדי שהטקסט יישאר קריא
+    document.body.classList.add('bg-lilac', 'bg-photo');
+    document.body.style.backgroundImage =
+      `linear-gradient(rgba(255,255,255,0.22), rgba(255,255,255,0.22)), url(${img})`;
+    if (image) localStorage.setItem('tasksBgImage', image);
+  } else {
+    document.body.classList.add(cls);
+    document.body.style.backgroundImage = '';
+  }
   localStorage.setItem('tasksBg', cls);
+}
+
+// כיווץ תמונת רקע כדי שתיכנס למסד הנתונים (מגבלה של כ-1MB למסמך)
+function compressImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let quality = 0.72, maxDim = 1400;
+      const attempt = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * scale);
+        c.height = Math.round(img.height * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        const url = c.toDataURL('image/jpeg', quality);
+        if (url.length > 900000 && maxDim > 700) { maxDim -= 300; quality -= 0.1; attempt(); }
+        else resolve(url);
+      };
+      attempt();
+    };
+    img.onerror = () => reject(new Error('התמונה לא נטענה'));
+    img.src = URL.createObjectURL(file);
+  });
 }
 
 function openTasksCount() {
@@ -1191,6 +1225,8 @@ function openSettingsModal() {
     ['bg-rose', 'linear-gradient(160deg,#fdf0f4,#f2b6d0)'], ['bg-night', 'linear-gradient(160deg,#2d2a3e,#5b5086)']
   ];
   const cur = localStorage.getItem('tasksBg') || 'bg-lilac';
+  let pendingImg = state.settings.bgImage || localStorage.getItem('tasksBgImage') || '';
+  let imgChanged = false;
   const notifStatus = !('Notification' in window) ? '<span class="status-warn">הדפדפן לא תומך בהתראות</span>'
     : Notification.permission === 'granted' && localStorage.getItem('fcmSaved') === '1' ? '<span class="status-ok">✔ פעילות במכשיר הזה</span>'
     : Notification.permission === 'denied' ? '<span class="status-warn">חסומות — אפשר לשנות בהגדרות הדפדפן</span>'
@@ -1201,7 +1237,12 @@ function openSettingsModal() {
     <div class="field"><label>רקע האפליקציה</label>
       <div class="bg-row" id="st-bgs">
         ${bgs.map(([k, g]) => `<button type="button" data-bg="${k}" class="${cur === k ? 'on' : ''}" style="background:${g}"></button>`).join('')}
+        <button type="button" data-bg="bg-photo" id="st-bgphoto" class="${cur === 'bg-photo' ? 'on' : ''}"
+          style="${pendingImg ? `background-image:url(${pendingImg});background-size:cover;background-position:center` : 'background:#e3e1ec'}"
+          title="תמונה שלי">${pendingImg ? '' : '📷'}</button>
       </div>
+      <button type="button" class="btn btn-ghost btn-small" id="st-bg-upload" style="margin-top:8px">📷 העלאת תמונת רקע מהמכשיר...</button>
+      <input type="file" id="st-bg-file" accept="image/*" class="hidden">
     </div>
     <div class="settings-block">
       <h3>🔔 התראות במכשיר הזה</h3>
@@ -1231,11 +1272,38 @@ function openSettingsModal() {
       <button class="btn btn-ghost" id="st-cancel">ביטול</button>
     </div>`);
 
-  $('#st-bgs').querySelectorAll('button').forEach(b => b.onclick = () => {
+  const selectSwatch = b => {
     $('#st-bgs').querySelectorAll('button').forEach(x => x.classList.remove('on'));
     b.classList.add('on');
-    applyBackground(b.dataset.bg);
+  };
+  $('#st-bgs').querySelectorAll('button').forEach(b => b.onclick = () => {
+    if (b.dataset.bg === 'bg-photo' && !pendingImg) { $('#st-bg-file').click(); return; }
+    selectSwatch(b);
+    applyBackground(b.dataset.bg, b.dataset.bg === 'bg-photo' ? pendingImg : null);
   });
+  $('#st-bg-upload').onclick = () => $('#st-bg-file').click();
+  $('#st-bg-file').onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      toast('מכינה את התמונה...');
+      pendingImg = await compressImageFile(file);
+      imgChanged = true;
+      const swatch = $('#st-bgphoto');
+      swatch.style.background = '';
+      swatch.style.backgroundImage = `url(${pendingImg})`;
+      swatch.style.backgroundSize = 'cover';
+      swatch.style.backgroundPosition = 'center';
+      swatch.textContent = '';
+      selectSwatch(swatch);
+      applyBackground('bg-photo', pendingImg);
+      toast('התמונה הוחלה — לא לשכוח ללחוץ שמירה');
+    } catch (err) {
+      console.error(err);
+      toast('לא הצלחתי לקרוא את התמונה, נסי תמונה אחרת');
+    }
+    e.target.value = '';
+  };
   $('#st-notif').onclick = enableNotifications;
   $('#st-cancel').onclick = closeModal;
   $('#st-import').onchange = async e => {
@@ -1262,11 +1330,13 @@ function openSettingsModal() {
   const lo = $('#st-logout');
   if (lo) lo.onclick = async () => { await firebaseCtx.authMod.signOut(firebaseCtx.auth); location.reload(); };
   $('#st-save').onclick = async () => {
-    await store.saveSettings({
+    const patch = {
       background: $('#st-bgs .on').dataset.bg,
       summaryEnabled: $('#st-summary').checked,
       summaryHour: $('#st-summary-hour').value || '07:00'
-    });
+    };
+    if (imgChanged && pendingImg) patch.bgImage = pendingImg;
+    await store.saveSettings(patch);
     closeModal();
     toast('ההגדרות נשמרו');
   };
