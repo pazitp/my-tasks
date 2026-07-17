@@ -1282,6 +1282,40 @@ function wireShell() {
   $('#add-btn').onclick = submitAdd;
 }
 
+// ===== תזכורות מקומיות כשהאפליקציה פתוחה =====
+// כשהאפליקציה פתוחה, ההתראה קופצת מיד בזמן המדויק — בלי לחכות לשרת.
+// לא מסמנים במסד (כדי שהשרת עדיין ישלח למכשירים האחרים); התג הזהה מונע כפילות.
+function startLocalReminderWatch() {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+  const shown = new Set(JSON.parse(localStorage.getItem('shownReminders') || '[]'));
+  setInterval(async () => {
+    if (Notification.permission !== 'granted') return;
+    const now = Date.now();
+    for (const t of state.tasks) {
+      if (t.done) continue;
+      const ats = (Array.isArray(t.remindAts) && t.remindAts.length) ? t.remindAts
+        : (t.remindAt ? [t.remindAt] : []);
+      for (const ms of ats) {
+        if (ms > now || ms < now - 10 * 60000) continue; // רק תזכורות מ-10 הדקות האחרונות
+        const key = t.id + ':' + ms;
+        if (shown.has(key)) continue;
+        shown.add(key);
+        localStorage.setItem('shownReminders', JSON.stringify([...shown].slice(-100)));
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          reg.showNotification('⏰ ' + t.title, {
+            body: t.time ? `היום בשעה ${t.time}` : 'תזכורת למשימה',
+            icon: './icon-192.png', dir: 'rtl', lang: 'he',
+            tag: 'task-' + t.id,
+            data: { url: './', taskId: t.id },
+            actions: [{ action: 'snooze60', title: '⏰ נודניק שעה' }, { action: 'done', title: '✔ בוצע' }]
+          });
+        } catch (e) { console.error(e); }
+      }
+    }
+  }, 30000);
+}
+
 // פעולה שהגיעה מלחיצה על כפתור בהתראה (נודניק / בוצע) — דרך כתובת עם פרמטרים
 function handleNotificationAction() {
   const p = new URLSearchParams(location.search);
@@ -1305,6 +1339,7 @@ function showApp(demo) {
   wireShell();
   store.init();
   handleNotificationAction();
+  startLocalReminderWatch();
 }
 
 function startLocal() {
