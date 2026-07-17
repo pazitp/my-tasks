@@ -20,9 +20,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install firebase-admin@12 --no-save --no-audit --no-fund
+      - run: npm install firebase-admin@12 nodemailer@6 --no-save --no-audit --no-fund
         working-directory: scripts
       - run: node send-reminders.js
         working-directory: scripts
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}

@@ -1,6 +1,7 @@
-// סקריפט שרץ ב-GitHub Actions כל 10 דקות:
+// סקריפט שרץ ב-GitHub Actions כל כמה דקות:
 // 1. שולח תזכורת (התראת דחיפה) על כל משימה שהגיע זמן התזכורת שלה.
-// 2. פעם ביום, בשעת הבוקר שנקבעה בהגדרות, שולח סיכום של משימות היום.
+// 2. פעם ביום, בשעת הבוקר שנקבעה בהגדרות, שולח סיכום של משימות היום —
+//    התראה לטלפון, וגם מייל לג'ימייל (אם הוגדרו הסודות GMAIL_USER ו-GMAIL_APP_PASSWORD).
 const admin = require('firebase-admin');
 
 const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -38,6 +39,32 @@ function whenText(t, ilDate) {
   if (t.due < ilDate) return 'המועד עבר — כדאי לטפל';
   const [y, m, d] = t.due.split('-').map(Number);
   return `ב-${d}.${m}` + time;
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function fmtShortDate(due) { const [, m, d] = due.split('-').map(Number); return `${d}.${m}`; }
+
+// גוף המייל של סיכום הבוקר — HTML פשוט בעברית, מימין לשמאל
+function emailHtml(todays, ilDate) {
+  const overdue = todays.filter(t => t.due < ilDate);
+  const today = todays.filter(t => t.due === ilDate);
+  const li = t => `<li style="margin:8px 0;font-size:16px">` +
+    (t.time ? `<b>${t.time}</b> · ` : '') + escHtml(t.title) +
+    (t.due < ilDate ? ` <span style="color:#c0392b">(מ-${fmtShortDate(t.due)})</span>` : '') + `</li>`;
+  let body = '';
+  if (!todays.length) {
+    body = '<p style="font-size:17px">אין משימות להיום — יום חופשי 🎉</p>';
+  } else {
+    if (overdue.length) body += `<h3 style="color:#c0392b;margin:16px 0 4px">באיחור</h3><ul style="padding-inline-start:20px;margin:0">${overdue.map(li).join('')}</ul>`;
+    if (today.length) body += `<h3 style="margin:16px 0 4px">היום</h3><ul style="padding-inline-start:20px;margin:0">${today.map(li).join('')}</ul>`;
+  }
+  return `<div dir="rtl" lang="he" style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#2d2a3e">
+    <h2 style="margin-bottom:4px">☀️ בוקר טוב!</h2>${body}
+    <p style="margin-top:20px"><a href="https://pazitp.github.io/my-tasks/" style="color:#6c5ce7">לפתיחת האפליקציה</a></p>
+  </div>`;
 }
 
 async function getTokens() {
@@ -106,10 +133,12 @@ async function main() {
   const sDoc = await settingsRef.get();
   const s = sDoc.exists ? sDoc.data() : {};
   const summaryHour = s.summaryHour || '07:00';
-  if (s.summaryEnabled !== false && il.time >= summaryHour && s.summarySentDate !== il.date) {
-    const todays = tasks.filter(t => t.due && t.due <= il.date)
-      .sort((a, b) => (a.due + (a.time || '99')).localeCompare(b.due + (b.time || '99')));
-    const overdue = todays.filter(t => t.due < il.date).length;
+  const summaryTime = il.time >= summaryHour;
+  const todays = tasks.filter(t => t.due && t.due <= il.date)
+    .sort((a, b) => (a.due + (a.time || '99')).localeCompare(b.due + (b.time || '99')));
+  const overdue = todays.filter(t => t.due < il.date).length;
+
+  if (s.summaryEnabled !== false && summaryTime && s.summarySentDate !== il.date) {
     let title, body;
     if (!todays.length) {
       title = '☀️ בוקר טוב!';
@@ -122,6 +151,37 @@ async function main() {
     console.log('סיכום בוקר:', title);
     await push(tokens, { title, body, tag: 'daily-summary', url: './' });
     await settingsRef.set({ summarySentDate: il.date }, { merge: true });
+  }
+
+  // --- מייל בוקר יומי ---
+  // נשלח פעם ביום באותה שעה של סיכום הבוקר, אל כתובת הג'ימייל שבסוד GMAIL_USER.
+  if (s.emailSummaryEnabled !== false && summaryTime && s.emailSentDate !== il.date) {
+    const user = process.env.GMAIL_USER, pass = process.env.GMAIL_APP_PASSWORD;
+    if (!user || !pass) {
+      console.log('מייל בוקר: הסודות GMAIL_USER / GMAIL_APP_PASSWORD לא הוגדרו — מדלגים.');
+    } else {
+      let nodemailer = null;
+      try { nodemailer = require('nodemailer'); }
+      catch { console.log('מייל בוקר: חבילת nodemailer לא מותקנת — מדלגים.'); }
+      if (nodemailer) {
+        const subject = todays.length
+          ? `☀️ ${todays.length} משימות להיום` + (overdue ? ` (${overdue} באיחור)` : '')
+          : '☀️ אין משימות להיום 🎉';
+        try {
+          const transport = nodemailer.createTransport({ service: 'gmail', auth: { user, pass } });
+          await transport.sendMail({
+            from: `"המשימות שלי" <${user}>`,
+            to: user,
+            subject,
+            html: emailHtml(todays, il.date)
+          });
+          await settingsRef.set({ emailSentDate: il.date }, { merge: true });
+          console.log('מייל בוקר נשלח:', subject);
+        } catch (e) {
+          console.error('שליחת מייל הבוקר נכשלה:', e.message);
+        }
+      }
+    }
   }
 
   console.log('סיום תקין.');

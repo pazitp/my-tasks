@@ -1275,6 +1275,8 @@ function openSettingsModal() {
       <h3>☀️ סיכום בוקר יומי</h3>
       <label class="inline-check"><input type="checkbox" id="st-summary" ${state.settings.summaryEnabled !== false ? 'checked' : ''}> לשלוח לי כל בוקר את משימות היום</label>
       <div style="margin-top:8px">בשעה <input type="time" id="st-summary-hour" value="${state.settings.summaryHour || '07:00'}" style="width:110px"></div>
+      <label class="inline-check" style="margin-top:8px;display:block"><input type="checkbox" id="st-email" ${state.settings.emailSummaryEnabled !== false ? 'checked' : ''}> 📧 לשלוח גם מייל עם משימות היום</label>
+      <p class="settings-note">המייל נשלח לכתובת הג'ימייל שהוגדרה בהתקנה (שלב חד-פעמי בהגדרות GitHub).</p>
     </div>
     <div class="settings-block">
       <h3>⬇️ ייבוא מ-Remember the Milk</h3>
@@ -1287,7 +1289,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 10</p>
+      <p class="settings-note">גרסת אפליקציה: 11</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
@@ -1355,7 +1357,8 @@ function openSettingsModal() {
     const patch = {
       background: $('#st-bgs .on').dataset.bg,
       summaryEnabled: $('#st-summary').checked,
-      summaryHour: $('#st-summary-hour').value || '07:00'
+      summaryHour: $('#st-summary-hour').value || '07:00',
+      emailSummaryEnabled: $('#st-email').checked
     };
     if (imgChanged && pendingImg) patch.bgImage = pendingImg;
     await store.saveSettings(patch);
