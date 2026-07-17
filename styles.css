@@ -225,6 +225,13 @@ body.bg-night .chip { color: #cdc5ff; }
 .weekdays button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
 
 .repeat-box { background: var(--bg); border-radius: 12px; padding: 12px; margin-top: 8px; }
+
+/* שורות תזכורת בחלונית העריכה */
+.rem-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.rem-row select { flex: 1; min-width: 0; padding: 9px 10px; border: 2px solid var(--line); border-radius: 11px; font-size: 15px; font-family: inherit; background: var(--bg); color: var(--text); }
+.rem-row input[type="time"] { width: 106px; padding: 8px 8px; border: 2px solid var(--line); border-radius: 11px; font-size: 15px; font-family: inherit; background: var(--bg); color: var(--text); }
+.rem-row span { font-size: 14px; color: var(--muted); flex-shrink: 0; }
+.rem-del { background: none; border: none; color: var(--danger); font-size: 16px; cursor: pointer; padding: 4px 6px; }
 .inline-check { display: flex; align-items: center; gap: 8px; font-size: 15px; cursor: pointer; }
 .inline-check input { width: 19px; height: 19px; accent-color: var(--primary); }
 

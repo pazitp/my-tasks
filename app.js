@@ -326,6 +326,25 @@ function computeRemindAt(due, remindTime) {
   return d.getTime();
 }
 
+// לכל משימה יכולות להיות כמה תזכורות: [{daysBefore: 0, time: '09:00'}, ...]
+// מחשב מהן את מועדי השליחה בפועל עבור תאריך היעד הנוכחי.
+function remindAtsFor(due, reminders) {
+  if (!due || !reminders || !reminders.length) return [];
+  const times = reminders
+    .map(r => computeRemindAt(addDaysStr(due, -(r.daysBefore || 0)), r.time))
+    .filter(Boolean);
+  return [...new Set(times)].sort((a, b) => a - b);
+}
+
+// קורא את התזכורות של משימה, כולל תמיכה במבנה הישן (תזכורת אחת)
+function getReminders(t) {
+  if (Array.isArray(t.reminders)) return t.reminders;
+  if (t.remind) return [{ daysBefore: 0, time: t.remindTime || t.time || '09:00' }];
+  return [];
+}
+
+const REM_DAYS_OPTS = [[0, 'ביום המשימה'], [1, 'יום לפני'], [2, 'יומיים לפני'], [3, '3 ימים לפני'], [7, 'שבוע לפני'], [14, 'שבועיים לפני']];
+
 // ===== 3ב. ייבוא מ-Remember the Milk =====
 // קורא את קובץ הייצוא (JSON) של RTM וממיר את המשימות הפתוחות למבנה שלנו.
 
@@ -441,13 +460,13 @@ async function importRTM(data) {
         }
       }
 
+      const reminders = time ? [{ daysBefore: 0, time }] : [];
       await store.add('tasks', {
         title, notes, listId, priority,
         due, time,
         repeat,
-        remind: !!time,
-        remindTime: time,
-        remindAt: time ? computeRemindAt(due, time) : null,
+        reminders,
+        remindAts: remindAtsFor(due, reminders),
         notifiedAt: null,
         done: false, completedAt: null, createdAt: Date.now()
       });
@@ -574,7 +593,7 @@ async function createTask(parsed, extra = {}) {
       toast(`נוצרה רשימה חדשה: ${parsed.listName}`);
     }
   }
-  const remind = !!parsed.time;
+  const reminders = parsed.time ? [{ daysBefore: 0, time: parsed.time }] : [];
   const task = {
     title: parsed.title || 'משימה ללא שם',
     notes: '',
@@ -583,9 +602,8 @@ async function createTask(parsed, extra = {}) {
     due: parsed.due || null,
     time: parsed.time || null,
     repeat: parsed.repeat || null,
-    remind,
-    remindTime: parsed.time || null,
-    remindAt: remind ? computeRemindAt(parsed.due, parsed.time) : null,
+    reminders,
+    remindAts: remindAtsFor(parsed.due, reminders),
     notifiedAt: null,
     done: false,
     completedAt: null,
@@ -597,10 +615,13 @@ async function createTask(parsed, extra = {}) {
 async function completeTask(t) {
   if (t.repeat) {
     const nextDue = computeNextDue(t.repeat, t.due);
-    lastUndo = { id: t.id, patch: { due: t.due, remindAt: t.remindAt, notifiedAt: t.notifiedAt } };
+    const rems = getReminders(t);
+    lastUndo = { id: t.id, patch: { due: t.due, remindAts: t.remindAts || null, notifiedAt: t.notifiedAt || null } };
     await store.update('tasks', t.id, {
       due: nextDue,
-      remindAt: t.remind ? computeRemindAt(nextDue, t.remindTime || t.time) : null,
+      reminders: rems,
+      remindAts: remindAtsFor(nextDue, rems),
+      remindAt: null,
       notifiedAt: null
     });
     toast(`יופי! הפעם הבאה: ${fmtDueLabel(nextDue)}`, 'ביטול', async () => {
@@ -618,9 +639,12 @@ async function completeTask(t) {
 async function postponeTask(t, days) {
   const base = (t.due && t.due > todayStr()) ? t.due : todayStr();
   const due = addDaysStr(base, days);
+  const rems = getReminders(t);
   await store.update('tasks', t.id, {
     due,
-    remindAt: t.remind ? computeRemindAt(due, t.remindTime || t.time) : null,
+    reminders: rems,
+    remindAts: remindAtsFor(due, rems),
+    remindAt: null,
     notifiedAt: null
   });
   toast(`נדחה ל${fmtDueLabel(due)}`);
@@ -703,7 +727,8 @@ function taskRow(t, showList = true) {
     meta.push(`<span class="${cls}">📅 ${fmtDueLabel(t.due)}${t.time ? ' ' + t.time : ''}</span>`);
   }
   if (t.repeat) meta.push(`<span>🔁 ${esc(describeRepeat(t.repeat))}</span>`);
-  if (t.remind && !t.done) meta.push(`<span>⏰</span>`);
+  const remCount = getReminders(t).length;
+  if (remCount && !t.done) meta.push(`<span>⏰${remCount > 1 ? '×' + remCount : ''}</span>`);
   if (showList && list) meta.push(`<span class="tm-list"><span class="list-dot" style="background:${esc(list.color)}"></span>${esc(list.name)}</span>`);
   if (t.notes) meta.push(`<span class="task-notes-icon">📝</span>`);
 
@@ -932,7 +957,7 @@ function wireRepeatForm() {
 
 function openTaskModal(t) {
   const isNew = !t;
-  t = t || { title: '', notes: '', listId: state.view.type === 'list' ? state.view.listId : null, priority: 0, due: null, time: null, repeat: null, remind: false, remindTime: null };
+  t = t || { title: '', notes: '', listId: state.view.type === 'list' ? state.view.listId : null, priority: 0, due: null, time: null, repeat: null, reminders: [] };
   const wrap = modalShell(`
     <h2>${isNew ? 'משימה חדשה' : 'עריכת משימה'}</h2>
     <div class="field"><label>מה צריך לעשות?</label><input type="text" id="tm-title" value="${esc(t.title)}"></div>
@@ -957,11 +982,9 @@ function openTaskModal(t) {
     </div>
     ${repeatFormHtml(t.repeat)}
     <div class="field">
-      <label class="inline-check"><input type="checkbox" id="tm-remind" ${t.remind ? 'checked' : ''}> שלחי לי תזכורת לטלפון</label>
-      <div id="tm-remind-row" class="${t.remind ? '' : 'hidden'}" style="margin-top:8px">
-        בשעה <input type="time" id="tm-remind-time" value="${t.remindTime || t.time || '09:00'}" style="width:110px">
-        <div class="settings-note">התזכורת תישלח ביום המשימה בשעה שנבחרה</div>
-      </div>
+      <label>⏰ תזכורות לטלפון</label>
+      <div id="tm-rems"></div>
+      <button type="button" class="btn btn-ghost btn-small" id="tm-rem-add">+ הוספת תזכורת</button>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="tm-save">${isNew ? 'הוספה' : 'שמירה'}</button>
@@ -974,7 +997,29 @@ function openTaskModal(t) {
     $('#tm-priority').querySelectorAll('button').forEach(x => x.classList.remove('on'));
     b.classList.add('on');
   });
-  $('#tm-remind').onchange = e => $('#tm-remind-row').classList.toggle('hidden', !e.target.checked);
+  // עורך התזכורות — רשימה דינמית של "מתי + באיזו שעה"
+  const rems = getReminders(t).map(r => ({ daysBefore: r.daysBefore || 0, time: r.time || '09:00' }));
+  function renderRems() {
+    const box = $('#tm-rems');
+    box.innerHTML = rems.length ? rems.map((r, i) => `
+      <div class="rem-row">
+        <select data-i="${i}" class="rem-days">${REM_DAYS_OPTS.map(([v, l]) =>
+          `<option value="${v}" ${r.daysBefore === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <span>בשעה</span>
+        <input type="time" data-i="${i}" class="rem-time" value="${r.time}">
+        <button type="button" class="rem-del" data-i="${i}" title="הסרת התזכורת">✕</button>
+      </div>`).join('')
+      : '<div class="settings-note" style="margin-bottom:6px">אין תזכורות למשימה הזו</div>';
+    box.querySelectorAll('.rem-days').forEach(el => el.onchange = () => { rems[el.dataset.i].daysBefore = Number(el.value); });
+    box.querySelectorAll('.rem-time').forEach(el => el.onchange = () => { rems[el.dataset.i].time = el.value || '09:00'; });
+    box.querySelectorAll('.rem-del').forEach(el => el.onclick = () => { rems.splice(Number(el.dataset.i), 1); renderRems(); });
+  }
+  renderRems();
+  $('#tm-rem-add').onclick = () => {
+    if (rems.length >= 5) { toast('עד 5 תזכורות למשימה'); return; }
+    rems.push({ daysBefore: 0, time: $('#tm-time').value || '09:00' });
+    renderRems();
+  };
   $('#tm-cancel').onclick = closeModal;
   if (!isNew) $('#tm-delete').onclick = async () => {
     if (confirm('למחוק את המשימה לצמיתות?')) { await store.remove('tasks', t.id); closeModal(); toast('המשימה נמחקה'); }
@@ -986,17 +1031,16 @@ function openTaskModal(t) {
     const repeat = readRepeatForm();
     let due = $('#tm-due').value || null;
     const time = $('#tm-time').value || null;
-    const remind = $('#tm-remind').checked;
-    const remindTime = $('#tm-remind-time').value || time || '09:00';
     if (repeat && !due) due = firstDueForRepeat(repeat);
-    if (remind && !due) { toast('לתזכורת צריך לבחור תאריך'); return; }
+    if (rems.length && !due) { toast('לתזכורות צריך לבחור תאריך למשימה'); return; }
     const patch = {
       title, notes: $('#tm-notes').value.trim(),
       listId: $('#tm-list').value || null,
       priority: Number($('#tm-priority').querySelector('.on').dataset.v),
-      due, time, repeat, remind,
-      remindTime: remind ? remindTime : null,
-      remindAt: remind ? computeRemindAt(due, remindTime) : null,
+      due, time, repeat,
+      reminders: rems,
+      remindAts: remindAtsFor(due, rems),
+      remindAt: null,
       notifiedAt: null
     };
     if (isNew) await store.add('tasks', { ...patch, done: false, completedAt: null, createdAt: Date.now() });

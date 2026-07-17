@@ -23,6 +23,23 @@ function fmtTime(ms) {
     .format(new Date(ms));
 }
 
+function addDaysStr(s, n) {
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  return dt.toISOString().slice(0, 10);
+}
+
+// "היום ב-14:00" / "מחר" / "ב-25.7" — מתי המשימה, יחסית להיום בישראל
+function whenText(t, ilDate) {
+  if (!t.due) return 'תזכורת למשימה';
+  const time = t.time ? ` בשעה ${t.time}` : '';
+  if (t.due === ilDate) return 'היום' + time;
+  if (t.due === addDaysStr(ilDate, 1)) return 'מחר' + time;
+  if (t.due < ilDate) return 'המועד עבר — כדאי לטפל';
+  const [y, m, d] = t.due.split('-').map(Number);
+  return `ב-${d}.${m}` + time;
+}
+
 async function getTokens() {
   const doc = await db.doc('taskMeta/tokens').get();
   const map = (doc.exists && doc.data().devices) || {};
@@ -64,13 +81,17 @@ async function main() {
   const tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
   // --- תזכורות למשימות שהגיע זמנן ---
+  // לכל משימה יכולות להיות כמה תזכורות (remindAts). שולחים כל תזכורת שעבר זמנה
+  // ושעדיין לא נשלחה (חדשה מ-notifiedAt), ומדלגים על תזכורות ישנות מ-3 ימים.
   for (const t of tasks) {
-    if (!t.remindAt || t.remindAt > now) continue;
-    if (t.notifiedAt && t.notifiedAt >= t.remindAt) continue; // כבר נשלחה
+    const remindAts = Array.isArray(t.remindAts) ? t.remindAts : (t.remindAt ? [t.remindAt] : []);
+    const pending = remindAts.filter(ms =>
+      ms <= now && ms > (t.notifiedAt || 0) && ms > now - 3 * 86400000);
+    if (!pending.length) continue;
     console.log('תזכורת:', t.title);
     await push(tokens, {
       title: '⏰ ' + t.title,
-      body: t.time ? `היום בשעה ${t.time}` : (t.notes ? String(t.notes).slice(0, 100) : 'תזכורת למשימה'),
+      body: whenText(t, il.date) + (t.notes ? '\n' + String(t.notes).slice(0, 80) : ''),
       tag: 'task-' + t.id,
       url: './'
     });
