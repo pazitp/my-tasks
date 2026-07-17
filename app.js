@@ -326,6 +326,141 @@ function computeRemindAt(due, remindTime) {
   return d.getTime();
 }
 
+// ===== 3ב. ייבוא מ-Remember the Milk =====
+// קורא את קובץ הייצוא (JSON) של RTM וממיר את המשימות הפתוחות למבנה שלנו.
+
+const RRULE_DAYS = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+
+// ממיר חוקיות חזרה בפורמט RRULE (למשל "FREQ=MONTHLY;BYDAY=-1SU") למבנה שלנו.
+// everyFlag=false פירושו ב-RTM חזרה של "אחרי סיום".
+function repeatFromRRule(rrule, everyFlag) {
+  if (!rrule) return null;
+  const p = {};
+  String(rrule).replace(/^RRULE:/i, '').split(';').forEach(kv => {
+    const [k, v] = kv.split('=');
+    if (k) p[k.trim().toUpperCase()] = (v || '').trim().toUpperCase();
+  });
+  const unit = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month', YEARLY: 'year' }[p.FREQ];
+  if (!unit) return null;
+  const interval = Math.max(1, parseInt(p.INTERVAL || '1', 10) || 1);
+  if (everyFlag === false || everyFlag === 0 || everyFlag === '0') return { mode: 'after', unit, interval };
+  const rep = { mode: 'schedule', unit, interval };
+  if (unit === 'week' && p.BYDAY) {
+    const days = p.BYDAY.split(',').map(d => RRULE_DAYS[d.slice(-2)]).filter(d => d !== undefined);
+    if (days.length) rep.weekdays = [...new Set(days)].sort();
+  }
+  if (unit === 'month') {
+    const nth = (p.BYDAY || '').match(/^(-?\d+)([A-Z]{2})$/);
+    if (nth && RRULE_DAYS[nth[2]] !== undefined) {
+      rep.monthMode = 'nth';
+      rep.nthWeek = Math.max(-1, Math.min(4, parseInt(nth[1], 10)));
+      rep.nthDay = RRULE_DAYS[nth[2]];
+    } else if (p.BYDAY && p.BYSETPOS && RRULE_DAYS[p.BYDAY] !== undefined) {
+      rep.monthMode = 'nth';
+      rep.nthWeek = Math.max(-1, Math.min(4, parseInt(p.BYSETPOS, 10)));
+      rep.nthDay = RRULE_DAYS[p.BYDAY];
+    } else if (p.BYMONTHDAY) {
+      rep.monthMode = 'day';
+      rep.monthDay = Math.min(31, Math.abs(parseInt(p.BYMONTHDAY, 10)) || 1);
+    }
+  }
+  return rep;
+}
+
+// תאריך מהייצוא של RTM — מספר (אלפיות שנייה) או מחרוזת
+function rtmDate(v) {
+  if (!v) return null;
+  const d = typeof v === 'number' ? new Date(v) : new Date(String(v));
+  if (isNaN(d)) return null;
+  return d;
+}
+
+async function importRTM(data) {
+  const rawTasks = data.tasks || [];
+  const rawLists = data.lists || [];
+  const rawNotes = data.notes || [];
+
+  // שמות רשימות לפי מזהה (מדלגים על "רשימות חכמות" שהן בעצם חיפושים)
+  const listNames = {};
+  for (const l of rawLists) {
+    if (l.smart) continue;
+    listNames[l.id] = l.name;
+  }
+  const SKIP_LISTS = ['Inbox', 'Sent', 'Trash'];
+
+  // הערות לפי המשימה שאליה הן שייכות
+  const notesByTask = {};
+  for (const n of rawNotes) {
+    const key = n.series_id ?? n.task_id ?? n.taskseries_id;
+    if (key == null) continue;
+    const text = [n.title, n.content || n.body].filter(Boolean).join(': ');
+    if (!text) continue;
+    (notesByTask[key] = notesByTask[key] || []).push(text);
+  }
+
+  const existingLists = new Map(state.lists.map(l => [l.name, l.id]));
+  const existingTasks = new Set(state.tasks.map(t => `${t.title}|${t.due || ''}`));
+  const res = { added: 0, done: 0, dup: 0, failed: 0 };
+
+  for (const t of rawTasks) {
+    try {
+      const title = t.name || t.title;
+      if (!title) { res.failed++; continue; }
+      if (t.date_completed || t.completed || t.date_trashed || t.deleted) { res.done++; continue; }
+
+      const dueD = rtmDate(t.date_due ?? t.due);
+      const due = dueD ? dateToStr(dueD) : null;
+      const hasTime = !!(t.date_due_has_time ?? t.has_due_time) && dueD;
+      const time = hasTime ? `${pad(dueD.getHours())}:${pad(dueD.getMinutes())}` : null;
+
+      if (existingTasks.has(`${title}|${due || ''}`)) { res.dup++; continue; }
+      existingTasks.add(`${title}|${due || ''}`);
+
+      // עדיפות ב-RTM: 1-3, וכל ערך אחר = ללא
+      const pr = parseInt(t.priority, 10);
+      const priority = (pr >= 1 && pr <= 3) ? pr : 0;
+
+      const repeat = repeatFromRRule(t.repeat || t.rrule, t.repeat_every ?? t.every);
+
+      const noteParts = notesByTask[t.series_id ?? t.id] || [];
+      const tags = Array.isArray(t.tags) && t.tags.length ? 'תגיות: ' + t.tags.join(', ') : '';
+      const notes = [...noteParts, tags].filter(Boolean).join('\n');
+
+      // רשימה — נוצרת אצלנו אם עוד לא קיימת
+      let listId = null;
+      const listName = listNames[t.list_id];
+      if (listName && !SKIP_LISTS.includes(listName)) {
+        if (existingLists.has(listName)) listId = existingLists.get(listName);
+        else {
+          listId = await store.add('lists', {
+            name: listName,
+            color: LIST_COLORS[existingLists.size % LIST_COLORS.length],
+            order: existingLists.size
+          });
+          existingLists.set(listName, listId);
+        }
+      }
+
+      await store.add('tasks', {
+        title, notes, listId, priority,
+        due, time,
+        repeat,
+        remind: !!time,
+        remindTime: time,
+        remindAt: time ? computeRemindAt(due, time) : null,
+        notifiedAt: null,
+        done: false, completedAt: null, createdAt: Date.now()
+      });
+      res.added++;
+    } catch (e) {
+      console.error('ייבוא משימה נכשל:', e, t);
+      res.failed++;
+    }
+  }
+  return res;
+}
+window.__rtmImport = importRTM; // לבדיקות ולפתרון תקלות
+
 // ===== 4. שמירת נתונים =====
 // שני מצבים עם אותו ממשק: LocalStore (במכשיר בלבד) ו-FirebaseStore (מסונכרן).
 
@@ -947,6 +1082,13 @@ function openSettingsModal() {
       <div style="margin-top:8px">בשעה <input type="time" id="st-summary-hour" value="${state.settings.summaryHour || '07:00'}" style="width:110px"></div>
     </div>
     <div class="settings-block">
+      <h3>⬇️ ייבוא מ-Remember the Milk</h3>
+      <p class="settings-note">באתר של RTM: תפריט ‣ Settings ‣ Account ‣ Export your data.
+        יורד קובץ — בוחרים אותו כאן, והמשימות הפתוחות (כולל רשימות וחזרות) ייכנסו לאפליקציה.</p>
+      <input type="file" id="st-import" accept=".json,application/json" style="margin-top:8px;max-width:100%">
+      <p class="settings-note" id="st-import-result"></p>
+    </div>
+    <div class="settings-block">
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
@@ -963,6 +1105,27 @@ function openSettingsModal() {
   });
   $('#st-notif').onclick = enableNotifications;
   $('#st-cancel').onclick = closeModal;
+  $('#st-import').onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const out = $('#st-import-result');
+    try {
+      const data = JSON.parse(await file.text());
+      const openCount = (data.tasks || []).filter(t => t.name && !t.date_completed && !t.completed && !t.date_trashed && !t.deleted).length;
+      if (!openCount) { out.textContent = 'לא נמצאו משימות פתוחות בקובץ — האם זה קובץ הייצוא של RTM?'; return; }
+      if (!confirm(`נמצאו ${openCount} משימות פתוחות בקובץ. לייבא אותן?`)) { e.target.value = ''; return; }
+      out.textContent = 'מייבאת...';
+      const r = await importRTM(data);
+      out.innerHTML = `<span class="status-ok">✔ יובאו ${r.added} משימות</span>` +
+        (r.dup ? ` · ${r.dup} דולגו (כבר קיימות)` : '') +
+        (r.done ? ` · ${r.done} שהושלמו לא יובאו` : '') +
+        (r.failed ? ` · <span class="status-warn">${r.failed} נכשלו</span>` : '');
+    } catch (err) {
+      console.error(err);
+      out.textContent = 'הקובץ לא נקרא — ודאי שבחרת את קובץ ה-JSON שירד מ-RTM';
+    }
+    e.target.value = '';
+  };
   const lo = $('#st-logout');
   if (lo) lo.onclick = async () => { await firebaseCtx.authMod.signOut(firebaseCtx.auth); location.reload(); };
   $('#st-save').onclick = async () => {
