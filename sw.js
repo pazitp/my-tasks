@@ -1,5 +1,5 @@
 // Service Worker — מאפשר לאפליקציה לעבוד גם בלי אינטרנט ולהיות מותקנת במסך הבית.
-const CACHE = 'tasks-v10';
+const CACHE = 'tasks-v11';
 const FILES = [
   './',
   './index.html',
@@ -63,7 +63,8 @@ self.addEventListener('notificationclick', e => {
   e.notification.close();
   const d = e.notification.data || {};
   if (e.action && d.taskId) {
-    e.waitUntil(clients.openWindow(`./?act=${e.action}&task=${d.taskId}`));
+    // חותמת זמן — כדי שהאפליקציה תזהה פעולה ישנה (חלון שחזר מהרקע) ולא תפעיל אותה באיחור
+    e.waitUntil(clients.openWindow(`./?act=${e.action}&task=${d.taskId}&ts=${Date.now()}`));
     return;
   }
   e.waitUntil(
