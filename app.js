@@ -487,7 +487,7 @@ const LIST_COLORS = ['#6c5ce7', '#e05c5c', '#f0a13c', '#27ae60', '#4a90d9', '#d2
 
 const state = {
   tasks: [], lists: [], settings: {},
-  view: { type: 'today', listId: null, q: '' },
+  view: { type: 'week', listId: null, q: '' },
   demo: false
 };
 
@@ -1289,7 +1289,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 11</p>
+      <p class="settings-note">גרסת אפליקציה: 12</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
@@ -1451,7 +1451,7 @@ function startLocalReminderWatch() {
           const reg = await navigator.serviceWorker.ready;
           reg.showNotification('⏰ ' + t.title, {
             body: t.time ? `היום בשעה ${t.time}` : 'תזכורת למשימה',
-            icon: './icon-192.png', dir: 'rtl', lang: 'he',
+            icon: './icon-192.png', badge: './badge-96.png', dir: 'rtl', lang: 'he',
             tag: 'task-' + t.id,
             data: { url: './', taskId: t.id },
             actions: [{ action: 'snooze60', title: '⏰ נודניק שעה' }, { action: 'done', title: '✔ בוצע' }]
