@@ -1,5 +1,5 @@
 // Service Worker — מאפשר לאפליקציה לעבוד גם בלי אינטרנט ולהיות מותקנת במסך הבית.
-const CACHE = 'tasks-v12';
+const CACHE = 'tasks-v13';
 const FILES = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const FILES = [
   './firebase-config.js',
   './manifest.webmanifest',
   './icon.svg',
+  './badge-96.png',
   './icon-192.png',
   './icon-512.png'
 ];
@@ -45,7 +46,7 @@ self.addEventListener('push', e => {
   e.waitUntil(self.registration.showNotification(d.title, {
     body: d.body || '',
     icon: './icon-192.png',
-    badge: './icon-192.png',
+    badge: './badge-96.png',
     dir: 'rtl',
     lang: 'he',
     tag: d.tag || undefined,
