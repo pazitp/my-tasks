@@ -868,8 +868,12 @@ function taskRow(t, showList = true) {
   if (showList && list) meta.push(`<span class="tm-list" style="background:${esc(list.color)};color:${textColorFor(list.color)}">${esc(list.name)}</span>`);
   if (t.notes) meta.push(`<span class="task-notes-icon">📝</span>`);
 
+  const now = new Date();
+  const nowTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  // משימה שזמן הביצוע שלה עבר ולא סומנה כבוצעה — תאריך שחלף, או היום בשעה שכבר עברה
+  const late = !t.done && t.due && (t.due < today || (t.due === today && t.time && t.time <= nowTime));
   const div = document.createElement('div');
-  div.className = `task p${t.priority || 0}` + (t.done ? ' done-task' : '');
+  div.className = `task p${t.priority || 0}` + (t.done ? ' done-task' : '') + (late ? ' late-task' : '');
   div.innerHTML = `
     <button class="task-check" title="${t.done ? 'החזרה' : 'סימון כהושלם'}">✓</button>
     <div class="task-body">
@@ -1298,7 +1302,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 15</p>
+      <p class="settings-note">גרסת אפליקציה: 16</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
@@ -1513,6 +1517,7 @@ function showApp(demo) {
   $('#demo-banner').classList.toggle('hidden', !demo);
   wireShell();
   store.init();
+  setInterval(render, 60000); // כדי שמשימה שזמנה עבר תיצבע גם בלי רענון ידני
   handleNotificationAction();
   startLocalReminderWatch();
 }
