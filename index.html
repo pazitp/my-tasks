@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body class="bg-lilac">
 
@@ -52,11 +52,22 @@
       <div id="add-preview"></div>
       <div id="view-title"></div>
       <div id="task-groups"></div>
+
+      <!-- רשימת קניות שבועית -->
+      <div id="shopping-box">
+        <h3>🛒 רשימת קניות</h3>
+        <div id="shop-items"></div>
+        <div id="shop-add-row">
+          <input type="text" id="shop-input" placeholder="מה צריך לקנות?">
+          <button id="shop-add-btn" title="הוספה">＋</button>
+        </div>
+        <button id="shop-clear" class="hidden">🗑️ מחיקת מה שנקנה</button>
+      </div>
     </main>
   </div>
 </div>
 
 <script src="firebase-config.js?v=1"></script>
-<script type="module" src="app.js?v=16"></script>
+<script type="module" src="app.js?v=17"></script>
 </body>
 </html>

@@ -495,7 +495,7 @@ function textColorFor(bg) {
 }
 
 const state = {
-  tasks: [], lists: [], settings: {},
+  tasks: [], lists: [], settings: {}, shopping: [],
   view: { type: 'week', listId: null, q: '' },
   demo: false
 };
@@ -507,7 +507,7 @@ class LocalStore {
   constructor() {
     this.key = 'myTasksData';
     const raw = localStorage.getItem(this.key);
-    this.data = raw ? JSON.parse(raw) : { tasks: [], lists: [], settings: {} };
+    this.data = raw ? JSON.parse(raw) : { tasks: [], lists: [], settings: {}, shopping: [] };
   }
   init() { this._emit(); }
   _save() { localStorage.setItem(this.key, JSON.stringify(this.data)); this._emit(); }
@@ -515,6 +515,7 @@ class LocalStore {
     state.tasks = [...this.data.tasks];
     state.lists = [...this.data.lists].sort((a, b) => (a.order || 0) - (b.order || 0));
     state.settings = { ...this.data.settings };
+    state.shopping = [...(this.data.shopping || [])];
     render();
   }
   _id() { return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
@@ -534,6 +535,7 @@ class LocalStore {
     this._save();
   }
   async saveSettings(patch) { this.data.settings = { ...this.data.settings, ...patch }; this._save(); }
+  async saveShopping(items) { this.data.shopping = items; this._save(); }
   async saveDeviceToken() { /* אין סנכרון במצב מקומי */ }
 }
 
@@ -553,6 +555,10 @@ class FirebaseStore {
         toast('בעיית הרשאות במסד הנתונים — צריך לעדכן את חוקי האבטחה (שלב בהתקנה)');
       });
     }
+    fns.onSnapshot(fns.doc(db, 'taskMeta', 'shopping'), snap => {
+      state.shopping = (snap.exists() && snap.data().items) || [];
+      render();
+    }, () => {});
     fns.onSnapshot(fns.doc(db, 'taskMeta', 'settings'), snap => {
       state.settings = snap.exists() ? snap.data() : {};
       applyBackground(state.settings.background, state.settings.bgImage);
@@ -575,6 +581,10 @@ class FirebaseStore {
   async saveSettings(patch) {
     const { fns, db } = this.fb;
     await fns.setDoc(fns.doc(db, 'taskMeta', 'settings'), patch, { merge: true });
+  }
+  async saveShopping(items) {
+    const { fns, db } = this.fb;
+    await fns.setDoc(fns.doc(db, 'taskMeta', 'shopping'), { items });
   }
   async saveDeviceToken(deviceId, token) {
     const { fns, db } = this.fb;
@@ -973,9 +983,33 @@ function renderMain() {
   }
 }
 
+// --- רשימת קניות: פריטים חופשיים בלי תאריך, לסימון ומחיקה אחרי הקנייה ---
+function renderShopping() {
+  const box = $('#shop-items');
+  if (!box) return;
+  const items = state.shopping || [];
+  box.innerHTML = items.length ? items.map((it, i) => `
+    <div class="shop-item ${it.bought ? 'bought' : ''}" data-i="${i}">
+      <button class="shop-check" title="סימון שנקנה">✓</button>
+      <span class="shop-text">${esc(it.text)}</span>
+      <button class="shop-del" title="מחיקת הפריט">✕</button>
+    </div>`).join('') : '<div class="shop-empty">הרשימה ריקה — כתבי למטה מה להוסיף 🙂</div>';
+  box.querySelectorAll('.shop-item').forEach(row => {
+    const i = Number(row.dataset.i);
+    row.querySelector('.shop-check').onclick = async () => {
+      await store.saveShopping(state.shopping.map((x, j) => j === i ? { ...x, bought: !x.bought } : x));
+    };
+    row.querySelector('.shop-del').onclick = async () => {
+      await store.saveShopping(state.shopping.filter((_, j) => j !== i));
+    };
+  });
+  $('#shop-clear').classList.toggle('hidden', !items.some(x => x.bought));
+}
+
 render = function () {
   renderSidebar();
   renderMain();
+  renderShopping();
 };
 
 // --- תצוגה מקדימה חיה של תיבת ההוספה ---
@@ -1302,7 +1336,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 16</p>
+      <p class="settings-note">גרסת אפליקציה: 17</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
@@ -1438,6 +1472,19 @@ function wireShell() {
   }
   input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitAdd(); } });
   $('#add-btn').onclick = submitAdd;
+
+  const shopInput = $('#shop-input');
+  async function addShopItem() {
+    const text = shopInput.value.trim();
+    if (!text) return;
+    shopInput.value = '';
+    await store.saveShopping([...(state.shopping || []), { text, bought: false }]);
+  }
+  shopInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addShopItem(); } });
+  $('#shop-add-btn').onclick = addShopItem;
+  $('#shop-clear').onclick = async () => {
+    await store.saveShopping((state.shopping || []).filter(x => !x.bought));
+  };
 }
 
 // ===== תזכורות מקומיות כשהאפליקציה פתוחה =====
