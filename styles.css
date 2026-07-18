@@ -298,3 +298,7 @@ body.bg-night #toast button { color: var(--primary-dark); }
 @media (min-width: 761px) {
   #menu-btn { display: none; }
 }
+
+/* משימה שזמן הביצוע שלה עבר ולא בוצעה */
+.task.late-task { background: #fdeaea; }
+body.bg-night .task.late-task { background: #5c3a44; }
