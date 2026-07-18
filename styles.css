@@ -165,7 +165,7 @@ body.bg-night .chip { color: #d5d3de; }
 .task-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-size: 13.5px; color: var(--muted); align-items: center; }
 .task-meta .overdue { color: var(--danger); font-weight: 600; }
 .task-meta .today-badge { color: var(--primary); font-weight: 600; }
-.task-meta .tm-list { display: inline-flex; align-items: center; gap: 5px; }
+.task-meta .tm-list { display: inline-flex; align-items: center; color: #fff; font-weight: 600; padding: 4px 14px; border-radius: 999px; font-size: 14.5px; }
 .task-notes-icon { font-size: 12.5px; }
 
 .task-actions { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
