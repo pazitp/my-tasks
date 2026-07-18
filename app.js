@@ -483,7 +483,16 @@ window.__rtmImport = importRTM; // לבדיקות ולפתרון תקלות
 // ===== 4. שמירת נתונים =====
 // שני מצבים עם אותו ממשק: LocalStore (במכשיר בלבד) ו-FirebaseStore (מסונכרן).
 
-const LIST_COLORS = ['#6c5ce7', '#e05c5c', '#f0a13c', '#27ae60', '#4a90d9', '#d268b8', '#16a2b8', '#8a6d4b'];
+const LIST_COLORS = ['#6c5ce7', '#e05c5c', '#f0a13c', '#27ae60', '#4a90d9', '#f8c8dc', '#16a2b8', '#8a6d4b'];
+
+// צבע טקסט קריא על רקע צבעוני: לבן על צבע כהה, כהה על צבע בהיר (כמו ורוד בייבי)
+function textColorFor(bg) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(bg || '');
+  if (!m) return '#fff';
+  const n = parseInt(m[1], 16);
+  const lum = 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+  return lum > 170 ? '#4a3644' : '#fff';
+}
 
 const state = {
   tasks: [], lists: [], settings: {},
@@ -856,7 +865,7 @@ function taskRow(t, showList = true) {
   if (t.repeat) meta.push(`<span>🔁 ${esc(describeRepeat(t.repeat))}</span>`);
   const remCount = getReminders(t).length;
   if (remCount && !t.done) meta.push(`<span>⏰${remCount > 1 ? '×' + remCount : ''}</span>`);
-  if (showList && list) meta.push(`<span class="tm-list" style="background:${esc(list.color)}">${esc(list.name)}</span>`);
+  if (showList && list) meta.push(`<span class="tm-list" style="background:${esc(list.color)};color:${textColorFor(list.color)}">${esc(list.name)}</span>`);
   if (t.notes) meta.push(`<span class="task-notes-icon">📝</span>`);
 
   const div = document.createElement('div');
@@ -1289,7 +1298,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 14</p>
+      <p class="settings-note">גרסת אפליקציה: 15</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
