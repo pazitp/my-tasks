@@ -192,6 +192,11 @@ function describeRepeat(rep) {
 // ===== 3. הבנת טקסט חופשי בעברית (Smart Add) =====
 
 const DAY_WORDS = { 'ראשון': 0, 'שני': 1, 'שלישי': 2, 'רביעי': 3, 'חמישי': 4, 'שישי': 5, 'שבת': 6 };
+const MONTH_WORDS = {
+  'ינואר': 1, 'פברואר': 2, 'מרץ': 3, 'מרס': 3, 'אפריל': 4, 'מאי': 5, 'יוני': 6,
+  'יולי': 7, 'אוגוסט': 8, 'ספטמבר': 9, 'אוקטובר': 10, 'נובמבר': 11, 'דצמבר': 12
+};
+const MONTHS_ALT = Object.keys(MONTH_WORDS).join('|');
 const COUNT_WORDS = {
   'יום': [1, 'day'], 'יומיים': [2, 'day'], 'שבוע': [1, 'week'], 'שבועיים': [2, 'week'],
   'חודש': [1, 'month'], 'חודשיים': [2, 'month'], 'שנה': [1, 'year'], 'שנתיים': [2, 'year']
@@ -212,7 +217,18 @@ function parseSmartAdd(raw) {
   }
 
   // --- רשימה: #שם ---
-  take(/#([^\s#!]+)/, m => { out.listName = m[1]; });
+  // קודם מנסים להתאים שם מלא של רשימה קיימת (כולל רווחים), ואם אין — מילה אחת
+  {
+    const m = text.match(/#(\S[^#!]*)/);
+    if (m) {
+      const rest = m[1].trim();
+      const names = state.lists.map(l => l.name).sort((a, b) => b.length - a.length);
+      const chosen = names.find(n => rest === n || rest.startsWith(n + ' '));
+      const val = chosen || rest.split(/\s+/)[0];
+      text = text.replace('#' + val, ' ');
+      out.listName = val;
+    }
+  }
 
   // --- עדיפות: !1 / !גבוה ---
   take(/!([123])/, m => { out.priority = Number(m[1]); }) ||
@@ -278,6 +294,12 @@ function parseSmartAdd(raw) {
     out.due = unit === 'month' ? addMonthsStr(todayStr(), n)
       : unit === 'year' ? addMonthsStr(todayStr(), 12 * n)
       : addDaysStr(todayStr(), n * days[unit]);
+  }) ||
+  take(new RegExp(`(?:ב[-\\s]?)?(\\d{1,2})\\s+(?:ב|ל)[-\\s]?(${MONTHS_ALT})(?:\\s+(\\d{4}))?`), m => {
+    const year = m[3] ? Number(m[3]) : new Date().getFullYear();
+    const d = new Date(year, MONTH_WORDS[m[2]] - 1, Number(m[1]));
+    if (!m[3] && dateToStr(d) < todayStr()) d.setFullYear(d.getFullYear() + 1);
+    out.due = dateToStr(d);
   }) ||
   take(/(?:ב[-\s]?)?(\d{1,2})[.\/](\d{1,2})(?:[.\/](\d{2,4}))?(?!\d|:)/, m => {
     const now = new Date();
@@ -1336,7 +1358,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 17</p>
+      <p class="settings-note">גרסת אפליקציה: 18</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
@@ -1459,7 +1481,37 @@ function wireShell() {
   $('#settings-btn').onclick = openSettingsModal;
 
   const input = $('#add-input');
-  input.addEventListener('input', renderAddPreview);
+
+  // הקלדת # פותחת תפריט בחירה מהרשימות הקיימות, מסונן תוך כדי הקלדה
+  const suggest = $('#list-suggest');
+  function updateListSuggest() {
+    const val = input.value;
+    const caret = input.selectionStart ?? val.length;
+    const before = val.slice(0, caret);
+    const m = /#([^#!]*)$/.exec(before);
+    const q = m ? m[1].trim() : null;
+    const opts = m ? state.lists.filter(l => !q || l.name.includes(q)) : [];
+    if (!opts.length) { suggest.classList.add('hidden'); return; }
+    suggest.innerHTML = opts.map(l =>
+      `<button type="button" class="ls-opt" data-name="${esc(l.name)}">
+        <span class="list-dot" style="background:${esc(l.color)}"></span>${esc(l.name)}</button>`).join('');
+    suggest.classList.remove('hidden');
+    suggest.querySelectorAll('.ls-opt').forEach(b => {
+      // pointerdown ולא click — כדי להקדים את סגירת התפריט כשהשדה מאבד פוקוס
+      b.onpointerdown = e => {
+        e.preventDefault();
+        const newBefore = before.slice(0, m.index) + '#' + b.dataset.name + ' ';
+        input.value = newBefore + val.slice(caret);
+        suggest.classList.add('hidden');
+        input.focus();
+        input.setSelectionRange(newBefore.length, newBefore.length);
+        renderAddPreview();
+      };
+    });
+  }
+  input.addEventListener('input', () => { renderAddPreview(); updateListSuggest(); });
+  input.addEventListener('blur', () => setTimeout(() => suggest.classList.add('hidden'), 200));
+
   async function submitAdd() {
     const val = input.value.trim();
     if (!val) { openTaskModal(null); return; }
