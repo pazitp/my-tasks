@@ -197,6 +197,12 @@ const MONTH_WORDS = {
   'יולי': 7, 'אוגוסט': 8, 'ספטמבר': 9, 'אוקטובר': 10, 'נובמבר': 11, 'דצמבר': 12
 };
 const MONTHS_ALT = Object.keys(MONTH_WORDS).join('|');
+const HOUR_WORDS = {
+  'אחת עשרה': 11, 'אחת-עשרה': 11, 'שתים עשרה': 12, 'שתיים עשרה': 12, 'שתים-עשרה': 12,
+  'אחת': 1, 'שתיים': 2, 'שתים': 2, 'שלוש': 3, 'ארבע': 4, 'חמש': 5, 'שש': 6,
+  'שבע': 7, 'שמונה': 8, 'תשע': 9, 'עשר': 10
+};
+const HOURS_ALT = Object.keys(HOUR_WORDS).sort((a, b) => b.length - a.length).join('|');
 const COUNT_WORDS = {
   'יום': [1, 'day'], 'יומיים': [2, 'day'], 'שבוע': [1, 'week'], 'שבועיים': [2, 'week'],
   'חודש': [1, 'month'], 'חודשיים': [2, 'month'], 'שנה': [1, 'year'], 'שנתיים': [2, 'year']
@@ -320,7 +326,44 @@ function parseSmartAdd(raw) {
   });
 
   // --- שעה ---
+  // "שמונה בבוקר" = 8:00, "שבע בערב" = 19:00, "אחת בצהריים" = 13:00 וכו'
+  const PERIOD_RE = 'בבוקר|בצהריים|אחר(?:י)?\\s+הצהריים|אחה"צ|בערב|בלילה';
+  function periodHour(h, p) {
+    if (h > 12) return h;
+    const kind = !p ? '' : p.includes('בוקר') ? 'בוקר'
+      : (p.startsWith('ב') && p.includes('צהריים')) ? 'צהריים'
+      : (p.includes('צהריים') || p.includes('אחה')) ? 'אחהצ'
+      : p.includes('ערב') ? 'ערב' : 'לילה';
+    if (h === 12) return (kind === 'צהריים' || kind === 'אחהצ') ? 12 : 0;
+    switch (kind) {
+      case 'צהריים': return h <= 5 ? h + 12 : h;
+      case 'אחהצ': return h <= 7 ? h + 12 : h;
+      case 'ערב': return h >= 5 ? h + 12 : h;
+      case 'לילה': return h >= 8 ? h + 12 : h;
+      case 'בוקר': return h;
+      default: return h >= 1 && h <= 6 ? h + 12 : h; // "בשעה שתיים" בלי הקשר — כנראה צהריים
+    }
+  }
+  const halfMin = s => s ? (s.includes('חצי') ? '30' : '15') : '00';
   take(/(?:בשעה\s+|ב[-\s]?)?([01]?\d|2[0-3]):([0-5]\d)/, m => { out.time = `${pad(Number(m[1]))}:${m[2]}`; }) ||
+  // שעה במילים עם חלק יום: "בשמונה בבוקר", "בשבע וחצי בערב"
+  take(new RegExp(`ב(?:שעה\\s+)?(${HOURS_ALT})(\\s+וחצי|\\s+ורבע)?\\s*(${PERIOD_RE})`), m => {
+    out.time = `${pad(periodHour(HOUR_WORDS[m[1]], m[3]))}:${halfMin(m[2])}`;
+  }) ||
+  // "בשעה שמונה" בלי חלק יום
+  take(new RegExp(`בשעה\\s+(${HOURS_ALT})(\\s+וחצי|\\s+ורבע)?`), m => {
+    out.time = `${pad(periodHour(HOUR_WORDS[m[1]], ''))}:${halfMin(m[2])}`;
+  }) ||
+  // שעה בספרות בלי נקודתיים: "ב-8 בבוקר", "ב-7 וחצי בערב"
+  take(new RegExp(`(?:בשעה\\s+|ב[-\\s]?)(\\d{1,2})(\\s+וחצי|\\s+ורבע)?\\s*(${PERIOD_RE})`), m => {
+    const h = Number(m[1]);
+    if (h <= 23) out.time = `${pad(periodHour(h, m[3]))}:${halfMin(m[2])}`;
+  }) ||
+  // "בשעה 8" בלי חלק יום
+  take(/בשעה\s+(\d{1,2})(?!\d|[:.\/])/, m => {
+    const h = Number(m[1]);
+    if (h <= 23) out.time = `${pad(periodHour(h, ''))}:00`;
+  }) ||
   take(/בבוקר/, () => { out.time = '09:00'; }) ||
   take(/בצהריים/, () => { out.time = '12:00'; }) ||
   take(/אחר(?:י)?\s+הצהריים|אחה"צ/, () => { out.time = '16:00'; }) ||
@@ -1358,7 +1401,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 18</p>
+      <p class="settings-note">גרסת אפליקציה: 19</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
