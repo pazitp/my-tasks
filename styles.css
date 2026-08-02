@@ -332,3 +332,17 @@ body.bg-night #shop-input { background: #2f2b40; }
 #shop-input:focus { outline: 2px solid #67b98a; }
 #shop-add-btn { border: none; border-radius: 10px; background: #27ae60; color: #fff; font-size: 20px; width: 46px; cursor: pointer; flex-shrink: 0; }
 #shop-clear { margin-top: 10px; background: none; border: none; color: #c0392b; font-size: 14.5px; cursor: pointer; font-family: inherit; }
+
+/* תפריט בחירת רשימה בהקלדת # */
+#list-suggest {
+  background: var(--card); border-radius: 12px; box-shadow: var(--shadow);
+  margin: 0 4px 8px; overflow: hidden;
+}
+.ls-opt {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 11px 14px; border: none; background: none; cursor: pointer;
+  font-size: 16px; font-family: inherit; color: var(--text); text-align: right;
+  border-bottom: 1px solid var(--line);
+}
+.ls-opt:last-child { border-bottom: none; }
+.ls-opt:hover { background: rgba(108, 92, 231, 0.08); }
