@@ -1,0 +1,53 @@
+# הוספת משימה לאפליקציה מבחוץ (למשל על ידי קלוד, לבקשת פזית).
+# מופעל ידנית בלבד — Actions ‣ add-task ‣ Run workflow.
+name: add-task
+
+on:
+  workflow_dispatch:
+    inputs:
+      title:
+        description: 'כותרת המשימה'
+        required: true
+        type: string
+      due:
+        description: 'תאריך (YYYY-MM-DD, לא חובה)'
+        required: false
+        type: string
+      time:
+        description: 'שעה (HH:MM, לא חובה — מוסיפה גם תזכורת)'
+        required: false
+        type: string
+      list:
+        description: 'שם רשימה (לא חובה; תיווצר אם לא קיימת)'
+        required: false
+        type: string
+      notes:
+        description: 'הערות (לא חובה)'
+        required: false
+        type: string
+      priority:
+        description: 'עדיפות 0-3 (0=רגילה, 1=גבוהה)'
+        required: false
+        type: string
+        default: '0'
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install firebase-admin@12 --no-save --no-audit --no-fund
+        working-directory: scripts
+      - run: node add-task.js
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          TASK_TITLE: ${{ inputs.title }}
+          TASK_DUE: ${{ inputs.due }}
+          TASK_TIME: ${{ inputs.time }}
+          TASK_LIST: ${{ inputs.list }}
+          TASK_NOTES: ${{ inputs.notes }}
+          TASK_PRIORITY: ${{ inputs.priority }}

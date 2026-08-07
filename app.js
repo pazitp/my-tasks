@@ -1401,7 +1401,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 19</p>
+      <p class="settings-note">גרסת אפליקציה: 20</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
@@ -1525,8 +1525,22 @@ function wireShell() {
 
   const input = $('#add-input');
 
-  // הקלדת # פותחת תפריט בחירה מהרשימות הקיימות, מסונן תוך כדי הקלדה
+  // הקלדת # פותחת תפריט בחירה מהרשימות הקיימות, מסונן תוך כדי הקלדה.
+  // ניווט: חיצים למעלה/למטה, אנטר לבחירה, Esc לסגירה — או לחיצה.
   const suggest = $('#list-suggest');
+  let sugCtx = null;   // המיקום בטקסט שאליו תיכנס הרשימה שתיבחר
+  let selIdx = -1;     // האפשרות המסומנת בחיצים (-1 = אין)
+  function chooseList(name) {
+    if (!sugCtx) return;
+    const { before, caret, mIndex } = sugCtx;
+    const newBefore = before.slice(0, mIndex) + '#' + name + ' ';
+    input.value = newBefore + input.value.slice(caret);
+    suggest.classList.add('hidden');
+    sugCtx = null; selIdx = -1;
+    input.focus();
+    input.setSelectionRange(newBefore.length, newBefore.length);
+    renderAddPreview();
+  }
   function updateListSuggest() {
     const val = input.value;
     const caret = input.selectionStart ?? val.length;
@@ -1534,23 +1548,26 @@ function wireShell() {
     const m = /#([^#!]*)$/.exec(before);
     const q = m ? m[1].trim() : null;
     const opts = m ? state.lists.filter(l => !q || l.name.includes(q)) : [];
-    if (!opts.length) { suggest.classList.add('hidden'); return; }
+    if (!opts.length) { suggest.classList.add('hidden'); sugCtx = null; selIdx = -1; return; }
+    sugCtx = { before, caret, mIndex: m.index };
+    selIdx = -1;
     suggest.innerHTML = opts.map(l =>
       `<button type="button" class="ls-opt" data-name="${esc(l.name)}">
         <span class="list-dot" style="background:${esc(l.color)}"></span>${esc(l.name)}</button>`).join('');
     suggest.classList.remove('hidden');
     suggest.querySelectorAll('.ls-opt').forEach(b => {
       // pointerdown ולא click — כדי להקדים את סגירת התפריט כשהשדה מאבד פוקוס
-      b.onpointerdown = e => {
-        e.preventDefault();
-        const newBefore = before.slice(0, m.index) + '#' + b.dataset.name + ' ';
-        input.value = newBefore + val.slice(caret);
-        suggest.classList.add('hidden');
-        input.focus();
-        input.setSelectionRange(newBefore.length, newBefore.length);
-        renderAddPreview();
-      };
+      b.onpointerdown = e => { e.preventDefault(); chooseList(b.dataset.name); };
     });
+  }
+  function moveSel(delta) {
+    const opts = [...suggest.querySelectorAll('.ls-opt')];
+    if (!opts.length) return;
+    // כשעוד שום דבר לא מסומן: חץ למטה מתחיל מהראשונה, חץ למעלה מהאחרונה
+    if (selIdx === -1) selIdx = delta > 0 ? 0 : opts.length - 1;
+    else selIdx = (selIdx + delta + opts.length) % opts.length;
+    opts.forEach((b, i) => b.classList.toggle('sel', i === selIdx));
+    opts[selIdx].scrollIntoView({ block: 'nearest' });
   }
   input.addEventListener('input', () => { renderAddPreview(); updateListSuggest(); });
   input.addEventListener('blur', () => setTimeout(() => suggest.classList.add('hidden'), 200));
@@ -1565,7 +1582,23 @@ function wireShell() {
     renderAddPreview();
     toast('המשימה נוספה ✔');
   }
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitAdd(); } });
+  input.addEventListener('keydown', e => {
+    const open = !suggest.classList.contains('hidden');
+    if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      moveSel(e.key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+    if (open && e.key === 'Escape') { suggest.classList.add('hidden'); selIdx = -1; return; }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (open && selIdx >= 0) {
+        const b = suggest.querySelectorAll('.ls-opt')[selIdx];
+        if (b) { chooseList(b.dataset.name); return; }
+      }
+      submitAdd();
+    }
+  });
   $('#add-btn').onclick = submitAdd;
 
   const shopInput = $('#shop-input');

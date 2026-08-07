@@ -346,3 +346,6 @@ body.bg-night #shop-input { background: #2f2b40; }
 }
 .ls-opt:last-child { border-bottom: none; }
 .ls-opt:hover { background: rgba(108, 92, 231, 0.08); }
+
+/* האפשרות המסומנת בחיצים בתפריט הרשימות */
+.ls-opt.sel { background: rgba(108, 92, 231, 0.15); }

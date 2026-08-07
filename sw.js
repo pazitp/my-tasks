@@ -1,5 +1,5 @@
 // Service Worker — מאפשר לאפליקציה לעבוד גם בלי אינטרנט ולהיות מותקנת במסך הבית.
-const CACHE = 'tasks-v20';
+const CACHE = 'tasks-v21';
 const FILES = [
   './',
   './index.html',
