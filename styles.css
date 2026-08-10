@@ -349,3 +349,17 @@ body.bg-night #shop-input { background: #2f2b40; }
 
 /* האפשרות המסומנת בחיצים בתפריט הרשימות */
 .ls-opt.sel { background: rgba(108, 92, 231, 0.15); }
+
+/* שורת חיפוש */
+#search-row {
+  display: flex; gap: 6px; margin-bottom: 10px; background: var(--card);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 6px;
+}
+#search-row.hidden { display: none; }
+#search-input {
+  flex: 1; border: none; background: none; font-size: 16px; padding: 8px 12px;
+  font-family: inherit; color: var(--text); min-width: 0;
+}
+#search-input:focus { outline: none; }
+#search-clear { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 0 10px; }
+#search-btn { font-size: 19px; background: none; border: none; cursor: pointer; padding: 6px 6px; }
