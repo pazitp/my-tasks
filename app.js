@@ -923,6 +923,8 @@ function renderSidebar() {
   sb.innerHTML = html;
   sb.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
     state.view = { type: b.dataset.view, listId: b.dataset.list || null, q: '' };
+    const si = $('#search-input');
+    if (si) { si.value = ''; $('#search-row').classList.add('hidden'); }
     document.body.classList.remove('sidebar-open');
     render();
   });
@@ -985,7 +987,14 @@ function renderMain() {
 
   const grp = (label, arr, cls = '') => { if (arr.length) groups.push({ label, arr: sortTasks(arr), cls }); };
 
-  if (v.type === 'today') {
+  if (v.q && v.q.trim()) {
+    const q = v.q.trim();
+    title = '🔍 תוצאות חיפוש';
+    const match = state.tasks.filter(x => (x.title || '').includes(q) || (x.notes || '').includes(q));
+    grp('פתוחות', match.filter(x => !x.done));
+    const doneMatch = match.filter(x => x.done).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0)).slice(0, 30);
+    if (doneMatch.length) groups.push({ label: 'הושלמו', arr: doneMatch, cls: '' });
+  } else if (v.type === 'today') {
     title = '📅 היום';
     grp('באיחור', open.filter(x => x.due && x.due < t), 'overdue');
     grp('היום', open.filter(x => x.due === t));
@@ -1032,7 +1041,7 @@ function renderMain() {
       done: ['💤', 'עוד לא הושלמו משימות'],
       list: ['📭', 'אין משימות ברשימה הזו']
     };
-    const [icon, msg] = msgs[v.type] || msgs.all;
+    const [icon, msg] = (v.q && v.q.trim()) ? ['🔍', 'לא נמצאו משימות מתאימות'] : (msgs[v.type] || msgs.all);
     groupsEl.innerHTML = `<div class="empty-msg"><div class="big">${icon}</div>${msg}</div>`;
     return;
   }
@@ -1398,10 +1407,15 @@ function openSettingsModal() {
       <p class="settings-note" id="st-import-result"></p>
     </div>
     <div class="settings-block">
+      <h3>📦 גיבוי</h3>
+      <p class="settings-note">מוריד קובץ עם כל המשימות, הרשימות ורשימת הקניות — ליום סגריר.</p>
+      <button class="btn btn-primary btn-small" id="st-export">⬇️ הורדת קובץ גיבוי</button>
+    </div>
+    <div class="settings-block">
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 20</p>
+      <p class="settings-note">גרסת אפליקציה: 21</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
@@ -1441,6 +1455,20 @@ function openSettingsModal() {
     e.target.value = '';
   };
   $('#st-notif').onclick = enableNotifications;
+  $('#st-export').onclick = () => {
+    const data = {
+      exportedAt: new Date().toISOString(),
+      tasks: state.tasks, lists: state.lists,
+      shopping: state.shopping, settings: state.settings
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `גיבוי-משימות-${todayStr()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('📦 קובץ הגיבוי ירד לתיקיית ההורדות');
+  };
   $('#st-cancel').onclick = closeModal;
   $('#st-import').onchange = async e => {
     const file = e.target.files[0];
@@ -1522,6 +1550,20 @@ function wireShell() {
   $('#menu-btn').onclick = () => document.body.classList.toggle('sidebar-open');
   $('#overlay').onclick = () => document.body.classList.remove('sidebar-open');
   $('#settings-btn').onclick = openSettingsModal;
+
+  // חיפוש משימות
+  const searchRow = $('#search-row'), searchInput = $('#search-input');
+  $('#search-btn').onclick = () => {
+    const opened = searchRow.classList.toggle('hidden') === false;
+    if (opened) searchInput.focus();
+    else { searchInput.value = ''; state.view.q = ''; render(); }
+  };
+  searchInput.addEventListener('input', () => { state.view.q = searchInput.value; render(); });
+  $('#search-clear').onclick = () => {
+    searchInput.value = ''; state.view.q = '';
+    searchRow.classList.add('hidden');
+    render();
+  };
 
   const input = $('#add-input');
 
