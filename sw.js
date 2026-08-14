@@ -1,7 +1,7 @@
 // Service Worker — מאפשר לאפליקציה לעבוד גם בלי אינטרנט ולהיות מותקנת במסך הבית.
 self.window = self; // firebase-config.js נכתב לדפדפן וכותב ל-window
 importScripts('./firebase-config.js');
-const CACHE = 'tasks-v24';
+const CACHE = 'tasks-v25';
 const FILES = [
   './',
   './index.html',
@@ -62,8 +62,8 @@ self.addEventListener('push', e => {
 });
 
 // ===== פעולות מהתראות בלי לפתוח את האפליקציה =====
-// "בוצע" מקפיץ התראת אישור, והאישור (וגם הנודניק) מעדכנים את המסד ישירות
-// מהרקע דרך Firestore REST. אם משהו נכשל — נפתחת האפליקציה כמו פעם.
+// "בוצע" ו"נודניק" מעדכנים את המסד ישירות מהרקע דרך Firestore REST,
+// בלחיצה אחת. אם משהו נכשל — נפתחת האפליקציה כמו פעם.
 
 // אסימון גישה מהחיבור השמור של Firebase (נשמר על ידי האפליקציה ב-IndexedDB)
 async function getIdToken() {
@@ -169,15 +169,8 @@ self.addEventListener('notificationclick', e => {
     return;
   }
   if (e.action === 'done' && d.taskId) {
-    // שלב אישור בתוך ההתראות — בלי לפתוח את האפליקציה
-    e.waitUntil(self.registration.showNotification('לסמן כבוצע? ✔', {
-      body: d.taskTitle || '',
-      icon: './icon-192.png', badge: './badge-96.png', dir: 'rtl', lang: 'he',
-      tag: 'confirm-' + d.taskId,
-      requireInteraction: true,
-      data: d,
-      actions: [{ action: 'confirm-done', title: '✔ כן, בוצע' }, { action: 'cancel', title: 'ביטול' }]
-    }));
+    // לחיצה אחת מסמנת כבוצע מיד; טעות מתקנים מאזור "הושלמו" באפליקציה
+    e.waitUntil(completeFromNotification(d));
     return;
   }
   if (e.action === 'snooze60' && d.taskId) {
