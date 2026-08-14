@@ -1415,7 +1415,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 21</p>
+      <p class="settings-note">גרסת אפליקציה: 22</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
@@ -1683,7 +1683,7 @@ function startLocalReminderWatch() {
             body: t.time ? `היום בשעה ${t.time}` : 'תזכורת למשימה',
             icon: './icon-192.png', badge: './badge-96.png', dir: 'rtl', lang: 'he',
             tag: 'task-' + t.id,
-            data: { url: './', taskId: t.id },
+            data: { url: './', taskId: t.id, taskTitle: t.title },
             actions: [{ action: 'snooze60', title: '⏰ נודניק שעה' }, { action: 'done', title: '✔ בוצע' }]
           });
         } catch (e) { console.error(e); }
@@ -1709,6 +1709,7 @@ function handleNotificationAction() {
     const t = state.tasks.find(x => x.id === id);
     if (!t) { if (attempts-- > 0) setTimeout(tryRun, 400); return; }
     if (act === 'snooze60') snoozeReminder(t, Date.now() + 3600000, 'בעוד שעה');
+    else if (act === 'done-confirmed' && !t.done) completeTask(t); // אושר כבר בהתראה עצמה
     else if (act === 'done' && !t.done) {
       // אישור לפני סימון — כדי שלחיצה לא מכוונת על ההתראה לא תסגור משימה בטעות.
       // יש גם אפשרות נודניק, למקרה שהדיאלוג קפץ כשבעצם רצו לדחות.
