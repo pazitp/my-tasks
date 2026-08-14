@@ -663,18 +663,41 @@ class FirebaseStore {
 
 let lastUndo = null;
 
+// שואל לפני יצירת רשימה חדשה — כדי שהקלדה חלקית + אנטר בטעות לא תייצר רשימה
+function confirmNewList(name) {
+  return new Promise(resolve => {
+    const wrap = modalShell(`
+      <h2>ליצור רשימה חדשה?</h2>
+      <p style="margin-bottom:16px;font-size:16px">הרשימה "${esc(name)}" לא קיימת עדיין.</p>
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="nl-create">＋ יצירת הרשימה</button>
+        <button class="btn btn-ghost" id="nl-none">הוספה בלי רשימה</button>
+        <button class="btn btn-ghost" id="nl-cancel">ביטול</button>
+      </div>`);
+    $('#nl-create').onclick = () => { closeModal(); resolve('create'); };
+    $('#nl-none').onclick = () => { closeModal(); resolve('without'); };
+    $('#nl-cancel').onclick = () => { closeModal(); resolve('cancel'); };
+    wrap.addEventListener('click', e => { if (e.target === wrap) resolve('cancel'); });
+  });
+}
+
 async function createTask(parsed, extra = {}) {
   let listId = extra.listId ?? null;
   if (parsed.listName) {
     const found = state.lists.find(l => l.name === parsed.listName);
     if (found) listId = found.id;
     else {
-      listId = await store.add('lists', {
-        name: parsed.listName,
-        color: LIST_COLORS[state.lists.length % LIST_COLORS.length],
-        order: state.lists.length
-      });
-      toast(`נוצרה רשימה חדשה: ${parsed.listName}`);
+      const choice = await confirmNewList(parsed.listName);
+      if (choice === 'cancel') return false; // המשימה לא נוספת; הטקסט נשאר בשורה
+      if (choice === 'create') {
+        listId = await store.add('lists', {
+          name: parsed.listName,
+          color: LIST_COLORS[state.lists.length % LIST_COLORS.length],
+          order: state.lists.length
+        });
+        toast(`נוצרה רשימה חדשה: ${parsed.listName}`);
+      }
+      // 'without' — המשימה נכנסת ל"כללי"
     }
   }
   const reminders = parsed.time ? [{ daysBefore: 0, time: parsed.time }] : [];
@@ -1096,7 +1119,10 @@ function renderAddPreview() {
   if (p.due) chips.push(`📅 ${fmtDueLabel(p.due)}${p.time ? ' ' + p.time : ''}`);
   if (p.repeat) chips.push(`🔁 ${describeRepeat(p.repeat)}`);
   if (p.time) chips.push(`⏰ תזכורת ב-${p.time}`);
-  if (p.listName) chips.push(`🗂️ ${p.listName}`);
+  if (p.listName) {
+    const exists = state.lists.some(l => l.name === p.listName);
+    chips.push(`🗂️ ${p.listName}${exists ? '' : ' — רשימה חדשה?'}`);
+  }
   if (p.priority) chips.push(`🚩 עדיפות ${['', 'גבוהה', 'בינונית', 'נמוכה'][p.priority]}`);
   el.innerHTML = chips.map(c => `<span class="chip">${esc(c)}</span>`).join('') +
     (chips.length ? '' : `<span class="chip chip-help">אפשר לכתוב למשל: "מחר", "כל שבועיים", "ב-14:00", "#קניות"</span>`);
@@ -1415,7 +1441,7 @@ function openSettingsModal() {
       ${state.demo
         ? '<p class="settings-note">מצב הדגמה — הנתונים נשמרים רק במכשיר הזה.</p>'
         : '<button class="btn btn-ghost btn-small" id="st-logout">יציאה מהחשבון</button>'}
-      <p class="settings-note">גרסת אפליקציה: 22</p>
+      <p class="settings-note">גרסת אפליקציה: 23</p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="st-save">שמירה</button>
@@ -1619,7 +1645,8 @@ function wireShell() {
     if (!val) { openTaskModal(null); return; }
     const parsed = parseSmartAdd(val);
     const listId = (!parsed.listName && state.view.type === 'list') ? state.view.listId : undefined;
-    await createTask(parsed, listId !== undefined ? { listId } : {});
+    const ok = await createTask(parsed, listId !== undefined ? { listId } : {});
+    if (ok === false) return; // בוטל בדיאלוג הרשימה החדשה
     input.value = '';
     renderAddPreview();
     toast('המשימה נוספה ✔');
