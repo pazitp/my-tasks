@@ -1,5 +1,7 @@
 # הוספת משימה לאפליקציה מבחוץ (למשל על ידי קלוד, לבקשת פזית).
-# מופעל ידנית בלבד — Actions ‣ add-task ‣ Run workflow.
+# שתי דרכים להפעלה:
+#   1. ידנית — Actions ‣ add-task ‣ Run workflow.
+#   2. פתיחת issue שכותרתו מתחילה ב-"משימה:" (רק מהחשבון pazitp) — ראו README.
 name: add-task
 
 on:
@@ -30,24 +32,57 @@ on:
         required: false
         type: string
         default: '0'
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+  contents: read
 
 jobs:
   add:
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.user.login == 'pazitp' &&
+       startsWith(github.event.issue.title, 'משימה:'))
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: פירוק ה-issue למשתני משימה
+        if: github.event_name == 'issues'
+        run: node parse-issue.js
+        working-directory: scripts
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
       - run: npm install firebase-admin@12 --no-save --no-audit --no-fund
         working-directory: scripts
       - run: node add-task.js
         working-directory: scripts
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          TASK_TITLE: ${{ inputs.title }}
-          TASK_DUE: ${{ inputs.due }}
-          TASK_TIME: ${{ inputs.time }}
-          TASK_LIST: ${{ inputs.list }}
-          TASK_NOTES: ${{ inputs.notes }}
-          TASK_PRIORITY: ${{ inputs.priority }}
+          TASK_TITLE: ${{ inputs.title || env.ISSUE_TASK_TITLE }}
+          TASK_DUE: ${{ inputs.due || env.ISSUE_TASK_DUE }}
+          TASK_TIME: ${{ inputs.time || env.ISSUE_TASK_TIME }}
+          TASK_LIST: ${{ inputs.list || env.ISSUE_TASK_LIST }}
+          TASK_NOTES: ${{ inputs.notes || env.ISSUE_TASK_NOTES }}
+          TASK_PRIORITY: ${{ inputs.priority || env.ISSUE_TASK_PRIORITY }}
+      - name: תגובה וסגירת ה-issue (הצלחה)
+        if: github.event_name == 'issues' && success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "✔ נוספה לאפליקציה"
+          gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY"
+      - name: תגובה עם קישור ללוג (כישלון)
+        if: github.event_name == 'issues' && failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --body "❌ ההוספה נכשלה — [לוג ההרצה]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
