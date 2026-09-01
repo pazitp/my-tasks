@@ -41,6 +41,20 @@ function lastDayOfMonthStr(s) {
   return dateToStr(new Date(d.getFullYear(), d.getMonth() + 1, 0));
 }
 
+// יום העבודה הראשון בחודש (ראשון-חמישי; מדלג על שישי ושבת)
+function firstWorkdayOfMonth(year, month) {
+  const d = new Date(year, month, 1);
+  while (d.getDay() === 5 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return dateToStr(d);
+}
+
+// יום העבודה האחרון בחודש
+function lastWorkdayOfMonth(year, month) {
+  const d = new Date(year, month + 1, 0);
+  while (d.getDay() === 5 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+  return dateToStr(d);
+}
+
 // "יום ראשון ה-N של החודש" — nth = 1..4, או -1 = האחרון
 function nthWeekdayOfMonth(year, month, nth, weekday) {
   if (nth === -1) {
@@ -92,6 +106,12 @@ function repeatStep(rep, from) {
       return addDaysStr(from, 7 * iv - w + days[0]);
     }
     case 'month': {
+      if (rep.monthMode === 'firstWork' || rep.monthMode === 'lastWork') {
+        const d = strToDate(from);
+        let y = d.getFullYear(), m = d.getMonth() + iv;
+        y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+        return rep.monthMode === 'firstWork' ? firstWorkdayOfMonth(y, m) : lastWorkdayOfMonth(y, m);
+      }
       if (rep.monthMode === 'nth') {
         const d = strToDate(from);
         let y = d.getFullYear(), m = d.getMonth() + iv;
@@ -142,6 +162,12 @@ function firstDueForRepeat(rep) {
     }
     case 'month': {
       const d = strToDate(t);
+      if (rep.monthMode === 'firstWork' || rep.monthMode === 'lastWork') {
+        const r = rep.monthMode === 'firstWork'
+          ? firstWorkdayOfMonth(d.getFullYear(), d.getMonth())
+          : lastWorkdayOfMonth(d.getFullYear(), d.getMonth());
+        return r >= t ? r : repeatStep(rep, t);
+      }
       if (rep.monthMode === 'nth') {
         const r = nthWeekdayOfMonth(d.getFullYear(), d.getMonth(), rep.nthWeek, rep.nthDay);
         return (r && r >= t) ? r : repeatStep(rep, t);
@@ -181,6 +207,8 @@ function describeRepeat(rep) {
     }
     case 'month': {
       const base = iv === 1 ? 'כל חודש' : iv === 2 ? 'כל חודשיים' : `כל ${iv} חודשים`;
+      if (rep.monthMode === 'firstWork') return `יום העבודה הראשון — ${base}`;
+      if (rep.monthMode === 'lastWork') return `יום העבודה האחרון — ${base}`;
       if (rep.monthMode === 'nth') return `יום ${DAY_NAMES[rep.nthDay]} ${NTH_WORDS[rep.nthWeek]} — ${base}`;
       return rep.monthDay ? `${base} ב-${rep.monthDay}` : base;
     }
@@ -249,6 +277,15 @@ function parseSmartAdd(raw) {
     else { [interval, unit] = COUNT_WORDS[m[3]]; }
     out.repeat = { mode: 'after', unit, interval };
   });
+
+  // --- חזרה: "יום העבודה הראשון/האחרון של כל חודש" (ראשון-חמישי) ---
+  if (!out.repeat) {
+    const workFn = m => {
+      out.repeat = { mode: 'schedule', unit: 'month', interval: 1, monthMode: m[1] === 'ראשון' ? 'firstWork' : 'lastWork' };
+    };
+    take(/(?:ב)?יום\s+(?:ה)?עבודה\s+ה?(ראשון|אחרון)\s*(?:של|ב)?\s*(?:כל\s+)?(?:ה)?חודש/, workFn) ||
+    take(/כל\s+חודש\s+ב?יום\s+(?:ה)?עבודה\s+ה?(ראשון|אחרון)/, workFn);
+  }
 
   // --- חזרה: "יום ראשון האחרון של כל חודש" ---
   take(new RegExp(`(?:ב)?יום\\s+(${DAYS_ALT})\\s+ה(ראשון|שני|שלישי|רביעי|אחרון)\\s+(?:של|ב)?\\s*(?:כל\\s+)?(?:ה)?חודש`), m => {
@@ -1166,10 +1203,12 @@ function repeatFormHtml(rep) {
       <div class="field ${mode === 'month' ? '' : 'hidden'}" id="rep-month-row">
         <label>איך לחזור בחודש?</label>
         <select id="rep-month-mode">
-          <option value="day" ${r.monthMode !== 'nth' ? 'selected' : ''}>בתאריך קבוע בחודש</option>
+          <option value="day" ${!r.monthMode || r.monthMode === 'day' ? 'selected' : ''}>בתאריך קבוע בחודש</option>
           <option value="nth" ${r.monthMode === 'nth' ? 'selected' : ''}>ביום מסוים (למשל: ראשון האחרון)</option>
+          <option value="firstWork" ${r.monthMode === 'firstWork' ? 'selected' : ''}>ביום העבודה הראשון (א'-ה')</option>
+          <option value="lastWork" ${r.monthMode === 'lastWork' ? 'selected' : ''}>ביום העבודה האחרון (א'-ה')</option>
         </select>
-        <div id="rep-month-day-row" class="${r.monthMode === 'nth' ? 'hidden' : ''}" style="margin-top:8px">
+        <div id="rep-month-day-row" class="${r.monthMode && r.monthMode !== 'day' ? 'hidden' : ''}" style="margin-top:8px">
           <input type="number" id="rep-month-day" min="1" max="31" value="${r.monthDay || 1}"> בחודש
         </div>
         <div id="rep-month-nth-row" class="field-row ${r.monthMode === 'nth' ? '' : 'hidden'}" style="margin-top:8px">
@@ -1202,7 +1241,7 @@ function readRepeatForm() {
   if (mode === 'month') {
     rep.monthMode = $('#rep-month-mode').value;
     if (rep.monthMode === 'nth') { rep.nthWeek = Number($('#rep-nth-week').value); rep.nthDay = Number($('#rep-nth-day').value); }
-    else rep.monthDay = Math.min(31, Math.max(1, Number($('#rep-month-day').value) || 1));
+    else if (rep.monthMode === 'day') rep.monthDay = Math.min(31, Math.max(1, Number($('#rep-month-day').value) || 1));
   }
   return rep;
 }
@@ -1216,7 +1255,7 @@ function wireRepeatForm() {
     $('#rep-after-row').classList.toggle('hidden', mode !== 'after');
     if (mode === 'month') {
       const mm = $('#rep-month-mode').value;
-      $('#rep-month-day-row').classList.toggle('hidden', mm === 'nth');
+      $('#rep-month-day-row').classList.toggle('hidden', mm !== 'day');
       $('#rep-month-nth-row').classList.toggle('hidden', mm !== 'nth');
     }
     const rep = readRepeatForm();
