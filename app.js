@@ -1465,6 +1465,12 @@ function openSettingsModal() {
       <p class="settings-note">המייל נשלח לכתובת הג'ימייל שהוגדרה בהתקנה (שלב חד-פעמי בהגדרות GitHub).</p>
     </div>
     <div class="settings-block">
+      <h3>🌙 מייל ערב — מה נשאר מהיום</h3>
+      <label class="inline-check"><input type="checkbox" id="st-evening" ${state.settings.eveningEmailEnabled !== false ? 'checked' : ''}> 📧 לשלוח לי בערב את משימות היום שעדיין לא בוצעו</label>
+      <div style="margin-top:8px">בשעה <input type="time" id="st-evening-hour" value="${state.settings.eveningEmailHour || '21:00'}" style="width:110px"></div>
+      <p class="settings-note">משימות שהשעה שלהן מאוחרת משעת המייל לא ייכללו. אם לא נשאר כלום — לא נשלח מייל.</p>
+    </div>
+    <div class="settings-block">
       <h3>⬇️ ייבוא מ-Remember the Milk</h3>
       <p class="settings-note">באתר של RTM: תפריט ‣ Settings ‣ Account ‣ Export your data.
         יורד קובץ — בוחרים אותו כאן, והמשימות הפתוחות (כולל רשימות וחזרות) ייכנסו לאפליקציה.</p>
@@ -1563,7 +1569,9 @@ function openSettingsModal() {
       background: $('#st-bgs .on').dataset.bg,
       summaryEnabled: $('#st-summary').checked,
       summaryHour: $('#st-summary-hour').value || '07:00',
-      emailSummaryEnabled: $('#st-email').checked
+      emailSummaryEnabled: $('#st-email').checked,
+      eveningEmailEnabled: $('#st-evening').checked,
+      eveningEmailHour: $('#st-evening-hour').value || '21:00'
     };
     if (imgChanged && pendingImg) patch.bgImage = pendingImg;
     await store.saveSettings(patch);

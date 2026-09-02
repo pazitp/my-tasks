@@ -67,6 +67,35 @@ function emailHtml(todays, ilDate) {
   </div>`;
 }
 
+// גוף מייל הערב — המשימות של היום שעדיין פתוחות
+function eveningEmailHtml(leftovers) {
+  const li = t => `<li style="margin:8px 0;font-size:16px">` +
+    (t.time ? `<b>${t.time}</b> · ` : '') + escHtml(t.title) + `</li>`;
+  return `<div dir="rtl" lang="he" style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#2d2a3e">
+    <h2 style="margin-bottom:4px">🌙 לפני שנגמר היום</h2>
+    <p style="font-size:16px">אלה המשימות של היום שעדיין פתוחות:</p>
+    <ul style="padding-inline-start:20px;margin:0">${leftovers.map(li).join('')}</ul>
+    <p style="margin-top:20px"><a href="https://pazitp.github.io/my-tasks/" style="color:#6c5ce7">לפתיחת האפליקציה</a></p>
+  </div>`;
+}
+
+// שליחת מייל לג'ימייל של פזית (הכתובת מהסוד GMAIL_USER). מחזיר האם נשלח.
+async function sendGmail(subject, html) {
+  const user = process.env.GMAIL_USER, pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) { console.log('מייל: הסודות GMAIL_USER / GMAIL_APP_PASSWORD לא הוגדרו — מדלגים.'); return false; }
+  let nodemailer = null;
+  try { nodemailer = require('nodemailer'); }
+  catch { console.log('מייל: חבילת nodemailer לא מותקנת — מדלגים.'); return false; }
+  try {
+    const transport = nodemailer.createTransport({ service: 'gmail', auth: { user, pass } });
+    await transport.sendMail({ from: `"המשימות שלי" <${user}>`, to: user, subject, html });
+    return true;
+  } catch (e) {
+    console.error('שליחת מייל נכשלה:', e.message);
+    return false;
+  }
+}
+
 async function getTokens() {
   const doc = await db.doc('taskMeta/tokens').get();
   const map = (doc.exists && doc.data().devices) || {};
@@ -156,30 +185,31 @@ async function main() {
   // --- מייל בוקר יומי ---
   // נשלח פעם ביום באותה שעה של סיכום הבוקר, אל כתובת הג'ימייל שבסוד GMAIL_USER.
   if (s.emailSummaryEnabled !== false && summaryTime && s.emailSentDate !== il.date) {
-    const user = process.env.GMAIL_USER, pass = process.env.GMAIL_APP_PASSWORD;
-    if (!user || !pass) {
-      console.log('מייל בוקר: הסודות GMAIL_USER / GMAIL_APP_PASSWORD לא הוגדרו — מדלגים.');
+    const subject = todays.length
+      ? `☀️ ${todays.length} משימות להיום` + (overdue ? ` (${overdue} באיחור)` : '')
+      : '☀️ אין משימות להיום 🎉';
+    if (await sendGmail(subject, emailHtml(todays, il.date))) {
+      await settingsRef.set({ emailSentDate: il.date }, { merge: true });
+      console.log('מייל בוקר נשלח:', subject);
+    }
+  }
+
+  // --- מייל ערב: מה נשאר מהיום ---
+  // בשעת הערב שנקבעה (ברירת מחדל 21:00) — המשימות של היום שעדיין לא בוצעו,
+  // חוץ ממשימות שהשעה שלהן מאוחרת משעת המייל (הן עוד לא "באיחור").
+  const eveningHour = s.eveningEmailHour || '21:00';
+  if (s.eveningEmailEnabled !== false && il.time >= eveningHour && s.eveningEmailSentDate !== il.date) {
+    const leftovers = tasks
+      .filter(t => t.due === il.date && (!t.time || t.time <= eveningHour))
+      .sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+    if (!leftovers.length) {
+      console.log('מייל ערב: לא נשארו משימות פתוחות להיום — אין מה לשלוח.');
+      await settingsRef.set({ eveningEmailSentDate: il.date }, { merge: true });
     } else {
-      let nodemailer = null;
-      try { nodemailer = require('nodemailer'); }
-      catch { console.log('מייל בוקר: חבילת nodemailer לא מותקנת — מדלגים.'); }
-      if (nodemailer) {
-        const subject = todays.length
-          ? `☀️ ${todays.length} משימות להיום` + (overdue ? ` (${overdue} באיחור)` : '')
-          : '☀️ אין משימות להיום 🎉';
-        try {
-          const transport = nodemailer.createTransport({ service: 'gmail', auth: { user, pass } });
-          await transport.sendMail({
-            from: `"המשימות שלי" <${user}>`,
-            to: user,
-            subject,
-            html: emailHtml(todays, il.date)
-          });
-          await settingsRef.set({ emailSentDate: il.date }, { merge: true });
-          console.log('מייל בוקר נשלח:', subject);
-        } catch (e) {
-          console.error('שליחת מייל הבוקר נכשלה:', e.message);
-        }
+      const subject = `🌙 נשארו ${leftovers.length === 1 ? 'משימה אחת' : leftovers.length + ' משימות'} מהיום`;
+      if (await sendGmail(subject, eveningEmailHtml(leftovers))) {
+        await settingsRef.set({ eveningEmailSentDate: il.date }, { merge: true });
+        console.log('מייל ערב נשלח:', subject);
       }
     }
   }

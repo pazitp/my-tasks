@@ -1,7 +1,7 @@
 // Service Worker — מאפשר לאפליקציה לעבוד גם בלי אינטרנט ולהיות מותקנת במסך הבית.
 self.window = self; // firebase-config.js נכתב לדפדפן וכותב ל-window
 importScripts('./firebase-config.js');
-const CACHE = 'tasks-v26';
+const CACHE = 'tasks-v27';
 const FILES = [
   './',
   './index.html',
