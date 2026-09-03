@@ -57,7 +57,7 @@ async function main() {
 
   const reminders = (due && time) ? [{ daysBefore: 0, time }] : [];
   const task = {
-    title, notes, listId, priority,
+    title, notes, listId, listIds: listId ? [listId] : [], priority,
     due, time,
     repeat: null,
     reminders,

@@ -242,7 +242,13 @@ const DAYS_ALT = 'ראשון|שני|שלישי|רביעי|חמישי|שישי|ש
 
 function parseSmartAdd(raw) {
   let text = ' ' + raw.trim() + ' ';
-  const out = { title: '', due: null, time: null, repeat: null, listName: null, priority: 0 };
+  const out = { title: '', due: null, time: null, repeat: null, listNames: [], listName: null, priority: 0 };
+
+  // --- מפריד אופציונלי: "כותרת // תזמון" (או \\ או |) ---
+  // כשיש מפריד, מה שלפניו נשאר כותרת בדיוק כמו שנכתב, ורק מה שאחריו מפוענח.
+  let fixedTitle = null;
+  const sep = raw.match(/^(.*?)\s*(?:\\+|\/\/|\|)\s*(.*)$/s);
+  if (sep && sep[1].trim()) { fixedTitle = ' ' + sep[1].trim() + ' '; text = ' ' + sep[2].trim() + ' '; }
 
   function take(re, fn) {
     const m = text.match(re);
@@ -250,18 +256,24 @@ function parseSmartAdd(raw) {
     return !!m;
   }
 
-  // --- רשימה: #שם ---
-  // קודם מנסים להתאים שם מלא של רשימה קיימת (כולל רווחים), ואם אין — מילה אחת
-  {
-    const m = text.match(/#(\S[^#!]*)/);
-    if (m) {
+  // --- רשימות: #שם (אפשר כמה, למשל #טליה #שקד) ---
+  // לכל # מנסים קודם להתאים שם מלא של רשימה קיימת (כולל רווחים), ואם אין — מילה אחת
+  function extractLists(str) {
+    const names = state.lists.map(l => l.name).sort((a, b) => b.length - a.length);
+    let m;
+    while ((m = str.match(/#(\S[^#!]*)/))) {
       const rest = m[1].trim();
-      const names = state.lists.map(l => l.name).sort((a, b) => b.length - a.length);
       const chosen = names.find(n => rest === n || rest.startsWith(n + ' '));
       const val = chosen || rest.split(/\s+/)[0];
-      text = text.replace('#' + val, ' ');
-      out.listName = val;
+      str = str.replace('#' + val, ' ');
+      if (!out.listNames.includes(val)) out.listNames.push(val);
     }
+    return str;
+  }
+  text = extractLists(text);
+  if (fixedTitle !== null) {
+    fixedTitle = extractLists(fixedTitle)
+      .replace(/!([123])/, (m, n) => { out.priority = Number(n); return ' '; });
   }
 
   // --- עדיפות: !1 / !גבוה ---
@@ -415,7 +427,8 @@ function parseSmartAdd(raw) {
     out.due = passed ? addDaysStr(todayStr(), 1) : todayStr();
   }
 
-  out.title = text.replace(/\s+/g, ' ').trim();
+  out.title = (fixedTitle !== null ? fixedTitle : text).replace(/\s+/g, ' ').trim();
+  out.listName = out.listNames[0] || null;
   return out;
 }
 
@@ -564,7 +577,7 @@ async function importRTM(data) {
 
       const reminders = time ? [{ daysBefore: 0, time }] : [];
       await store.add('tasks', {
-        title, notes, listId, priority,
+        title, notes, listId, listIds: listId ? [listId] : [], priority,
         due, time,
         repeat,
         reminders,
@@ -594,6 +607,12 @@ function textColorFor(bg) {
   const n = parseInt(m[1], 16);
   const lum = 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
   return lum > 170 ? '#4a3644' : '#fff';
+}
+
+// רשימות של משימה — המבנה החדש (listIds) עם תמיכה בשדה הישן (listId)
+function getListIds(t) {
+  if (Array.isArray(t.listIds)) return t.listIds;
+  return t.listId ? [t.listId] : [];
 }
 
 const state = {
@@ -719,29 +738,29 @@ function confirmNewList(name) {
 }
 
 async function createTask(parsed, extra = {}) {
-  let listId = extra.listId ?? null;
-  if (parsed.listName) {
-    const found = state.lists.find(l => l.name === parsed.listName);
-    if (found) listId = found.id;
-    else {
-      const choice = await confirmNewList(parsed.listName);
-      if (choice === 'cancel') return false; // המשימה לא נוספת; הטקסט נשאר בשורה
-      if (choice === 'create') {
-        listId = await store.add('lists', {
-          name: parsed.listName,
-          color: LIST_COLORS[state.lists.length % LIST_COLORS.length],
-          order: state.lists.length
-        });
-        toast(`נוצרה רשימה חדשה: ${parsed.listName}`);
-      }
-      // 'without' — המשימה נכנסת ל"כללי"
+  const listIds = [...(extra.listIds || [])];
+  for (const name of (parsed.listNames || [])) {
+    const found = state.lists.find(l => l.name === name);
+    if (found) { if (!listIds.includes(found.id)) listIds.push(found.id); continue; }
+    const choice = await confirmNewList(name);
+    if (choice === 'cancel') return false; // המשימה לא נוספת; הטקסט נשאר בשורה
+    if (choice === 'create') {
+      const id = await store.add('lists', {
+        name,
+        color: LIST_COLORS[(state.lists.length + listIds.length) % LIST_COLORS.length],
+        order: state.lists.length + listIds.length
+      });
+      listIds.push(id);
+      toast(`נוצרה רשימה חדשה: ${name}`);
     }
+    // 'without' — הרשימה הזו פשוט לא משויכת
   }
   const reminders = parsed.time ? [{ daysBefore: 0, time: parsed.time }] : [];
   const task = {
     title: parsed.title || 'משימה ללא שם',
     notes: '',
-    listId,
+    listIds,
+    listId: listIds[0] || null,
     priority: parsed.priority || 0,
     due: parsed.due || null,
     time: parsed.time || null,
@@ -971,12 +990,12 @@ function renderSidebar() {
 
   html += `<button class="side-item ${v.type === 'list' && v.listId === null ? 'active' : ''}" data-view="list" data-list="">
       <span class="list-dot" style="background:#9a95b5"></span><span>כללי</span>
-      <span class="count">${open.filter(x => !x.listId).length}</span></button>`;
+      <span class="count">${open.filter(x => !getListIds(x).length).length}</span></button>`;
 
   for (const l of state.lists) {
     html += `<button class="side-item ${v.type === 'list' && v.listId === l.id ? 'active' : ''}" data-view="list" data-list="${l.id}">
       <span class="list-dot" style="background:${esc(l.color)}"></span><span>${esc(l.name)}</span>
-      <span class="count">${open.filter(x => x.listId === l.id).length}</span></button>`;
+      <span class="count">${open.filter(x => getListIds(x).includes(l.id)).length}</span></button>`;
   }
 
   const sb = $('#sidebar');
@@ -993,7 +1012,7 @@ function renderSidebar() {
 
 function taskRow(t, showList = true) {
   const today = todayStr();
-  const list = t.listId ? state.lists.find(l => l.id === t.listId) : null;
+  const lists = getListIds(t).map(id => state.lists.find(l => l.id === id)).filter(Boolean);
   const meta = [];
   if (t.due && !t.done) {
     const cls = t.due < today ? 'overdue' : t.due === today ? 'today-badge' : '';
@@ -1002,7 +1021,7 @@ function taskRow(t, showList = true) {
   if (t.repeat) meta.push(`<span>🔁 ${esc(describeRepeat(t.repeat))}</span>`);
   const remCount = getReminders(t).length;
   if (remCount && !t.done) meta.push(`<span>⏰${remCount > 1 ? '×' + remCount : ''}</span>`);
-  if (showList && list) meta.push(`<span class="tm-list" style="background:${esc(list.color)};color:${textColorFor(list.color)}">${esc(list.name)}</span>`);
+  if (showList) for (const list of lists) meta.push(`<span class="tm-list" style="background:${esc(list.color)};color:${textColorFor(list.color)}">${esc(list.name)}</span>`);
   if (t.notes) meta.push(`<span class="task-notes-icon">📝</span>`);
 
   const now = new Date();
@@ -1083,7 +1102,7 @@ function renderMain() {
     title = list
       ? `<span class="list-dot" style="background:${esc(list.color)}"></span> ${esc(list.name)} <button class="btn btn-ghost btn-small" id="edit-list-btn" title="עריכת הרשימה">✏️</button>`
       : '🗂️ כללי';
-    const inList = open.filter(x => (x.listId || null) === (v.listId || null));
+    const inList = open.filter(x => v.listId ? getListIds(x).includes(v.listId) : !getListIds(x).length);
     grp('באיחור', inList.filter(x => x.due && x.due < t), 'overdue');
     grp('קרוב', inList.filter(x => x.due && x.due >= t));
     grp('ללא תאריך', inList.filter(x => !x.due));
@@ -1156,13 +1175,13 @@ function renderAddPreview() {
   if (p.due) chips.push(`📅 ${fmtDueLabel(p.due)}${p.time ? ' ' + p.time : ''}`);
   if (p.repeat) chips.push(`🔁 ${describeRepeat(p.repeat)}`);
   if (p.time) chips.push(`⏰ תזכורת ב-${p.time}`);
-  if (p.listName) {
-    const exists = state.lists.some(l => l.name === p.listName);
-    chips.push(`🗂️ ${p.listName}${exists ? '' : ' — רשימה חדשה?'}`);
+  for (const name of p.listNames) {
+    const exists = state.lists.some(l => l.name === name);
+    chips.push(`🗂️ ${name}${exists ? '' : ' — רשימה חדשה?'}`);
   }
   if (p.priority) chips.push(`🚩 עדיפות ${['', 'גבוהה', 'בינונית', 'נמוכה'][p.priority]}`);
   el.innerHTML = chips.map(c => `<span class="chip">${esc(c)}</span>`).join('') +
-    (chips.length ? '' : `<span class="chip chip-help">אפשר לכתוב למשל: "מחר", "כל שבועיים", "ב-14:00", "#קניות"</span>`);
+    (chips.length ? '' : `<span class="chip chip-help">אפשר לכתוב למשל: "מחר", "כל שבועיים", "ב-14:00", "#קניות", או "כותרת // תזמון"</span>`);
 }
 
 // --- חלונית משימה (יצירה מפורטת / עריכה) ---
@@ -1270,7 +1289,7 @@ function wireRepeatForm() {
 
 function openTaskModal(t) {
   const isNew = !t;
-  t = t || { title: '', notes: '', listId: state.view.type === 'list' ? state.view.listId : null, priority: 0, due: null, time: null, repeat: null, reminders: [] };
+  t = t || { title: '', notes: '', listIds: (state.view.type === 'list' && state.view.listId) ? [state.view.listId] : [], priority: 0, due: null, time: null, repeat: null, reminders: [] };
   const wrap = modalShell(`
     <h2>${isNew ? 'משימה חדשה' : 'עריכת משימה'}</h2>
     <div class="field"><label>מה צריך לעשות?</label><input type="text" id="tm-title" value="${esc(t.title)}"></div>
@@ -1280,11 +1299,13 @@ function openTaskModal(t) {
       <div class="field"><label>שעה (לא חובה)</label><input type="time" id="tm-time" value="${t.time || ''}"></div>
     </div>
     <div class="field">
-      <label>רשימה</label>
-      <select id="tm-list">
-        <option value="">כללי</option>
-        ${state.lists.map(l => `<option value="${l.id}" ${t.listId === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}
-      </select>
+      <label>רשימות (אפשר לבחור כמה)</label>
+      <div class="list-checks" id="tm-lists">
+        ${state.lists.map(l => `<label class="list-check ${getListIds(t).includes(l.id) ? 'on' : ''}" style="--lc:${esc(l.color)};--lct:${textColorFor(l.color)}">
+          <input type="checkbox" value="${l.id}" ${getListIds(t).includes(l.id) ? 'checked' : ''}>
+          <span class="list-dot" style="background:${esc(l.color)}"></span>${esc(l.name)}</label>`).join('')}
+        ${state.lists.length ? '' : '<span class="settings-note">עוד אין רשימות — אפשר ליצור מהתפריט הצדדי</span>'}
+      </div>
     </div>
     <div class="field">
       <label>עדיפות</label>
@@ -1306,6 +1327,7 @@ function openTaskModal(t) {
     </div>`);
 
   wireRepeatForm();
+  document.querySelectorAll('#tm-lists input').forEach(cb => cb.onchange = () => cb.parentElement.classList.toggle('on', cb.checked));
   $('#tm-priority').querySelectorAll('button').forEach(b => b.onclick = () => {
     $('#tm-priority').querySelectorAll('button').forEach(x => x.classList.remove('on'));
     b.classList.add('on');
@@ -1363,9 +1385,11 @@ function openTaskModal(t) {
     // ולכן אוכפים גם כאן את הכלל — משימה עם שעה תמיד מקבלת תזכורת לאותה שעה
     if (time && !rems.some(r => !r.daysBefore && r.time === time)) rems.push({ daysBefore: 0, time });
     if (rems.length && !due) { toast('לתזכורות צריך לבחור תאריך למשימה'); return; }
+    const tmListIds = [...document.querySelectorAll('#tm-lists input:checked')].map(cb => cb.value);
     const patch = {
       title, notes: $('#tm-notes').value.trim(),
-      listId: $('#tm-list').value || null,
+      listIds: tmListIds,
+      listId: tmListIds[0] || null,
       priority: Number($('#tm-priority').querySelector('.on').dataset.v),
       due, time, repeat,
       reminders: rems,
@@ -1403,8 +1427,9 @@ function openListModal(list) {
   $('#lm-cancel').onclick = closeModal;
   if (!isNew) $('#lm-delete').onclick = async () => {
     if (!confirm(`למחוק את הרשימה "${list.name}"? המשימות שבה יעברו ל"כללי".`)) return;
-    for (const task of state.tasks.filter(x => x.listId === list.id)) {
-      await store.update('tasks', task.id, { listId: null });
+    for (const task of state.tasks.filter(x => getListIds(x).includes(list.id))) {
+      const rest = getListIds(task).filter(id => id !== list.id);
+      await store.update('tasks', task.id, { listIds: rest, listId: rest[0] || null });
     }
     await store.remove('lists', list.id);
     state.view = { type: 'all', listId: null, q: '' };
@@ -1691,8 +1716,8 @@ function wireShell() {
     const val = input.value.trim();
     if (!val) { openTaskModal(null); return; }
     const parsed = parseSmartAdd(val);
-    const listId = (!parsed.listName && state.view.type === 'list') ? state.view.listId : undefined;
-    const ok = await createTask(parsed, listId !== undefined ? { listId } : {});
+    const inListView = state.view.type === 'list' && state.view.listId;
+    const ok = await createTask(parsed, (!parsed.listNames.length && inListView) ? { listIds: [state.view.listId] } : {});
     if (ok === false) return; // בוטל בדיאלוג הרשימה החדשה
     input.value = '';
     renderAddPreview();
