@@ -813,6 +813,8 @@ async function snoozeReminder(t, atMs, label) {
 function openSnoozeMenu(t) {
   const now = new Date();
   const opts = [];
+  // משימה שהתאריך שלה עבר — האפשרות הראשונה היא להביא אותה להיום
+  if (t.due && t.due < todayStr()) { opts.push(['d0', '📅 דחיית המשימה להיום']); opts.push(['sep', '']); }
   opts.push(['h1', '⏰ תזכורת שוב בעוד שעה']);
   if (now.getHours() < 18) opts.push(['eve', '🌆 תזכורת הערב ב-19:00']);
   opts.push(['tmr', '☀️ תזכורת מחר ב-09:00']);
@@ -841,7 +843,8 @@ function openSnoozeMenu(t) {
     } else if (a === 'tmr') {
       const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
       await snoozeReminder(t, d.getTime(), 'מחר ב-09:00');
-    } else if (a === 'd1') await postponeTask(t, 1);
+    } else if (a === 'd0') await postponeTaskTo(t, todayStr());
+    else if (a === 'd1') await postponeTask(t, 1);
     else if (a === 'd7') await postponeTask(t, 7);
   });
 }
@@ -1490,10 +1493,11 @@ function openSettingsModal() {
       <p class="settings-note">המייל נשלח לכתובת הג'ימייל שהוגדרה בהתקנה (שלב חד-פעמי בהגדרות GitHub).</p>
     </div>
     <div class="settings-block">
-      <h3>🌙 מייל ערב — מה נשאר מהיום</h3>
-      <label class="inline-check"><input type="checkbox" id="st-evening" ${state.settings.eveningEmailEnabled !== false ? 'checked' : ''}> 📧 לשלוח לי בערב את משימות היום שעדיין לא בוצעו</label>
+      <h3>🌙 סיכום ערב — מה נשאר מהיום</h3>
+      <label class="inline-check"><input type="checkbox" id="st-evening-push" ${state.settings.eveningPushEnabled !== false ? 'checked' : ''}> 🔔 התראה לטלפון עם משימות היום שעדיין לא בוצעו</label>
+      <label class="inline-check" style="margin-top:8px;display:block"><input type="checkbox" id="st-evening" ${state.settings.eveningEmailEnabled !== false ? 'checked' : ''}> 📧 לשלוח גם מייל</label>
       <div style="margin-top:8px">בשעה <input type="time" id="st-evening-hour" value="${state.settings.eveningEmailHour || '21:00'}" style="width:110px"></div>
-      <p class="settings-note">משימות שהשעה שלהן מאוחרת משעת המייל לא ייכללו. אם לא נשאר כלום — לא נשלח מייל.</p>
+      <p class="settings-note">משימות שהשעה שלהן מאוחרת משעת הסיכום לא ייכללו. אם לא נשאר כלום — לא נשלח כלום.</p>
     </div>
     <div class="settings-block">
       <h3>⬇️ ייבוא מ-Remember the Milk</h3>
@@ -1595,6 +1599,7 @@ function openSettingsModal() {
       summaryEnabled: $('#st-summary').checked,
       summaryHour: $('#st-summary-hour').value || '07:00',
       emailSummaryEnabled: $('#st-email').checked,
+      eveningPushEnabled: $('#st-evening-push').checked,
       eveningEmailEnabled: $('#st-evening').checked,
       eveningEmailHour: $('#st-evening-hour').value || '21:00'
     };

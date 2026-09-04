@@ -1,0 +1,63 @@
+# מייצא את המשימות ל-tasks.json במאגר הפרטי pazitp/my-tasks-data, כדי שקלוד
+# יוכל לקרוא אותן דרך מחבר GitHub (בלי כניסה לאפליקציה ובלי לחשוף נתונים במאגר הציבורי).
+# דורש סוד DATA_REPO_TOKEN — ראו README. אם הסוד חסר, הריצה מדלגת בשקט.
+name: export-tasks
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: export-tasks
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: בדיקה שהסוד DATA_REPO_TOKEN קיים
+        id: check
+        env:
+          TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "הסוד DATA_REPO_TOKEN לא הוגדר — מדלגים על הייצוא."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ok == 'true'
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ok == 'true'
+        with:
+          repository: pazitp/my-tasks-data
+          token: ${{ secrets.DATA_REPO_TOKEN }}
+          path: data
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ok == 'true'
+        with:
+          node-version: '20'
+      - run: npm install firebase-admin@12 --no-save --no-audit --no-fund
+        if: steps.check.outputs.ok == 'true'
+        working-directory: scripts
+      - run: node export-tasks.js
+        if: steps.check.outputs.ok == 'true'
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          EXPORT_PATH: ${{ github.workspace }}/data/tasks.json
+      - name: שמירה במאגר הנתונים (רק אם משהו השתנה)
+        if: steps.check.outputs.ok == 'true'
+        working-directory: data
+        run: |
+          git config user.name "my-tasks export"
+          git config user.email "actions@users.noreply.github.com"
+          git add tasks.json
+          if git diff --cached --quiet; then
+            echo "אין שינוי במשימות — לא נשמר."
+          else
+            git commit -m "עדכון משימות $(TZ=Asia/Jerusalem date '+%d/%m/%Y %H:%M')"
+            git push
+          fi

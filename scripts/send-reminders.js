@@ -194,20 +194,34 @@ async function main() {
     }
   }
 
-  // --- מייל ערב: מה נשאר מהיום ---
+  // --- סיכום ערב: מה נשאר מהיום ---
   // בשעת הערב שנקבעה (ברירת מחדל 21:00) — המשימות של היום שעדיין לא בוצעו,
-  // חוץ ממשימות שהשעה שלהן מאוחרת משעת המייל (הן עוד לא "באיחור").
+  // חוץ ממשימות שהשעה שלהן מאוחרת משעת הסיכום (הן עוד לא "באיחור").
+  // נשלח כהתראה לטלפון (eveningPushEnabled) וגם/או כמייל (eveningEmailEnabled).
   const eveningHour = s.eveningEmailHour || '21:00';
-  if (s.eveningEmailEnabled !== false && il.time >= eveningHour && s.eveningEmailSentDate !== il.date) {
+  if (il.time >= eveningHour) {
     const leftovers = tasks
       .filter(t => t.due === il.date && (!t.time || t.time <= eveningHour))
       .sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
-    if (!leftovers.length) {
-      console.log('מייל ערב: לא נשארו משימות פתוחות להיום — אין מה לשלוח.');
-      await settingsRef.set({ eveningEmailSentDate: il.date }, { merge: true });
-    } else {
-      const subject = `🌙 נשארו ${leftovers.length === 1 ? 'משימה אחת' : leftovers.length + ' משימות'} מהיום`;
-      if (await sendGmail(subject, eveningEmailHtml(leftovers))) {
+    const subject = `🌙 נשארו ${leftovers.length === 1 ? 'משימה אחת' : leftovers.length + ' משימות'} מהיום`;
+
+    if (s.eveningPushEnabled !== false && s.eveningPushSentDate !== il.date) {
+      if (leftovers.length) {
+        let body = leftovers.slice(0, 6).map(t => '• ' + (t.time ? t.time + ' ' : '') + t.title).join('\n');
+        if (leftovers.length > 6) body += `\n...ועוד ${leftovers.length - 6}`;
+        console.log('סיכום ערב (התראה):', subject);
+        await push(tokens, { title: subject, body, tag: 'evening-summary', url: './' });
+      } else {
+        console.log('סיכום ערב: לא נשארו משימות פתוחות להיום — אין התראה.');
+      }
+      await settingsRef.set({ eveningPushSentDate: il.date }, { merge: true });
+    }
+
+    if (s.eveningEmailEnabled !== false && s.eveningEmailSentDate !== il.date) {
+      if (!leftovers.length) {
+        console.log('מייל ערב: לא נשארו משימות פתוחות להיום — אין מה לשלוח.');
+        await settingsRef.set({ eveningEmailSentDate: il.date }, { merge: true });
+      } else if (await sendGmail(subject, eveningEmailHtml(leftovers))) {
         await settingsRef.set({ eveningEmailSentDate: il.date }, { merge: true });
         console.log('מייל ערב נשלח:', subject);
       }
