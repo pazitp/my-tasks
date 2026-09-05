@@ -56,6 +56,12 @@ async function main() {
     completedAt: ilDateTime(t.completedAt)
   });
 
+  // רשימת הקניות (taskMeta/shopping) — פריטים חופשיים, bought = סומן ב-V
+  const shopSnap = await db.collection('taskMeta').doc('shopping').get();
+  const shopping = ((shopSnap.exists && shopSnap.data().items) || [])
+    .map(it => ({ text: (it.text || '').trim(), bought: !!it.bought }))
+    .filter(it => it.text);
+
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   const sortKey = t => (t.due || '9999') + (t.time || '99:99') + (t.title || '');
   const open = all.filter(t => !t.done).map(slim).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
@@ -64,8 +70,10 @@ async function main() {
 
   const out = {
     _readme: 'ייצוא אוטומטי מאפליקציית המשימות. תאריכים ושעות לפי שעון ישראל. ' +
-      'open = משימות פתוחות (ממוינות לפי תאריך ושעה), doneRecent = הושלמו ב-7 הימים האחרונים. ' +
-      'קריאה בלבד — כדי להוסיף משימה פותחים issue במאגר my-tasks עם הקידומת "משימה:".',
+      'open = משימות פתוחות (ממוינות לפי תאריך ושעה), doneRecent = הושלמו ב-7 הימים האחרונים, ' +
+      'shopping = רשימת הקניות (bought=true אם סומן ב-V). ' +
+      'קריאה בלבד — כדי להוסיף משימה פותחים issue במאגר my-tasks עם הקידומת "משימה:", ' +
+      'וכדי לסמן פריטי קניות כנקנו פותחים issue עם הקידומת "נקנה:".',
     lists: lists.map(l => l.name),
     counts: {
       open: open.length,
@@ -73,12 +81,13 @@ async function main() {
       dueToday: open.filter(t => t.due === today).length
     },
     open,
-    doneRecent
+    doneRecent,
+    shopping
   };
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(out, null, 2) + '\n');
-  console.log(`✔ יוצאו ${open.length} משימות פתוחות ו-${doneRecent.length} שהושלמו לאחרונה אל ${OUT}`);
+  console.log(`✔ יוצאו ${open.length} משימות פתוחות, ${doneRecent.length} שהושלמו לאחרונה ו-${shopping.length} פריטי קניות אל ${OUT}`);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
